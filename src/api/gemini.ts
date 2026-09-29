@@ -11,7 +11,7 @@ export type Question = {
 
 // async funkcije vracaju promise, a ne stvarnu vrijednost
 export async function generateQuestions(sourceText: string): Promise<Question[]> {
-    const prompt = `Na osnovu sljedećeg teksta, napravi 5 pitanja za aktivno prisjećanje (recall) prikladnih za učenje. Svako pitanje treba imati kratak, jasan odgovor. Vrati ISKLJUČIVO validan JSON niz objekata, bez markdown formatiranja, bez uvoda, u ovom obliku: [{"question": "...", "answer": "...}]
+    const prompt = `Na osnovu sljedećeg teksta, napravi 5 pitanja za aktivno prisjećanje (recall) prikladnih za učenje. Svako pitanje treba imati kratak, jasan odgovor. Vrati ISKLJUČIVO validan JSON niz objekata, bez markdown formatiranja, bez uvoda, u ovom obliku: [{"question": "...", "answer": "..."}]
     
     Tekst: 
     """

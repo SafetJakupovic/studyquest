@@ -1,4 +1,12 @@
 import * as SQLite from 'expo-sqlite';
+import { createEmptyCard, type Card } from 'ts-fsrs';
+
+export type DeckStats = {
+    id: number;
+    name: string;
+    total: number;
+    due: number;
+}
 
 export type StoredQuestion = {
     id: number;
@@ -6,6 +14,18 @@ export type StoredQuestion = {
     answer: string;
     sourceText: string;
     createdAt: string;
+    // fsrs polja
+    due: string;
+    stability: number;
+    difficulty: number;
+    elapsed_days: number;
+    scheduled_days: number;
+    learning_steps: number;
+    reps: number;
+    lapses: number;
+    state: number;
+    last_review: string | null;
+    deck_id: number | null;
 };
 
 const db = SQLite.openDatabaseSync('studyquest.db');
@@ -17,24 +37,138 @@ export function initDatabase() {
             question TEXT NOT NULL,
             answer TEXT NOT NULL,
             sourceText TEXT,
-            createdAt TEXT NOT NULL
+            createdAt TEXT NOT NULL,
+            due TEXT NOT NULL,
+            stability REAL NOT NULL,
+            difficulty REAL NOT NULL,
+            elapsed_days INTEGER NOT NULL,
+            scheduled_days INTEGER NOT NULL,
+            learning_steps INTEGER NOT NULL,
+            reps INTEGER NOT NULL,
+            lapses INTEGER NOT NULL,
+            state INTEGER NOT NULL,
+            last_review TEXT
         );
     `);
+
+    const row = db.getFirstSync<{ user_version: number }>('PRAGMA user_version');
+    const version = row?.user_version ?? 0;
+
+    if (version < 1) {
+        // ili sve ili nista, pitanja do sad ide u opste
+        // migracija posto sam zaboravio odmah definisati spilove
+        db.withTransactionSync(() => {
+            db.execSync(`
+                CREATE TABLE IF NOT EXISTS decks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                createdAt TEXT NOT NULL
+                );
+                ALTER TABLE questions ADD COLUMN deck_id INTEGER REFERENCES decks(id);
+                `);
+            db.runSync('INSERT INTO decks (name, createdAt) VALUES (?, ?)', ['Opšte', new Date().toISOString()]);
+            db.execSync(`UPDATE questions SET deck_id = (SELECT id FROM decks WHERE name = 'Opšte')`);
+            db.execSync('PRAGMA user_version = 1');
+        });
+    }
+
+    // ocistio bazu s ovim kad sam pogresan format stavio
+    // moze se obrisati, ali neka
+    db.runSync(
+        "UPDATE questions SET last_review = NULL WHERE last_review IS NOT NULL AND last_review NOT LIKE '____-__-__T%'"
+    );
+}
+
+export function getDeckStats(): DeckStats[] {
+    const now = new Date().toISOString();
+    return db.getAllSync<DeckStats>(
+        `SELECT d.id, d.name,
+        COUNT(q.id) AS total,
+        COALESCE(SUM(CASE WHEN q.due <= ? THEN 1 ELSE 0 END), 0) AS due
+        FROM decks d
+        LEFT JOIN questions q ON q.deck_id = d.id 
+        GROUP BY d.id
+        ORDER BY d.name`,
+        [now]
+    );
+    // count(*) bi vratilo 1 umjesto 0 ako nema nista
+    // coalesce vraca 0 umjesto null, a suma prakticno broji jedan po jedan da sabere koliko ih je na redu za ponavljanje 
+}
+
+export function createDeck(name: string): number {
+    const r = db.runSync('INSERT INTO decks (name, createdAt) VALUES (?, ?)', [name, new Date().toISOString()]);
+    return r.lastInsertRowId;
+}
+
+export function getQuestionById(id: number): StoredQuestion | null {
+    return db.getFirstSync<StoredQuestion>('SELECT * FROM questions WHERE id = ?', [id]);
 }
 
 export function insertQuestions(
-    items: { question: string; answer: string; sourceText: string }[]
+    items: { question: string; answer: string; sourceText: string }[],
+    deckId: number
 ) {
+    // sqlite ne zna za JS objekte pa se datimu pretvaraju u string
     const now = new Date().toISOString();
     for (const item of items) {
+        const card: Card = createEmptyCard(new Date());
         db.runSync(
             /* ide ? da ne ubacujemo tekst direktno u SQL string (tipa "...VALUES ('" + text + "')") jer to otvara SQL injection napade i puca na specijalnim znakovima */
-            'INSERT INTO questions (question, answer, sourceText, createdAt) VALUES (?, ?, ?, ?)',
-            [item.question, item.answer, item.sourceText, now]
+            `INSERT INTO questions 
+            (question, answer, sourceText, createdAt, due, stability, difficulty, elapsed_days, scheduled_days, learning_steps, reps, lapses, state, last_review, deck_id) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                item.question,
+                item.answer,
+                item.sourceText,
+                now,
+                card.due.toISOString(),
+                card.stability,
+                card.difficulty,
+                card.elapsed_days,
+                card.scheduled_days,
+                card.learning_steps,
+                card.reps,
+                card.lapses,
+                card.state,
+                card.last_review ? card.last_review.toISOString() : null,
+                deckId,
+            ]
         );
     }
 }
 
 export function getAllQuestions(): StoredQuestion[] {
     return db.getAllSync<StoredQuestion>('SELECT * FROM questions ORDER BY createdAt DESC');
+}
+
+// pitanja za danas
+export function getDueQuestions(deckId: number): StoredQuestion[] {
+    const now = new Date().toISOString();
+    return db.getAllSync<StoredQuestion>(
+        'SELECT * FROM questions WHERE due <= ? AND deck_id = ? ORDER BY due ASC',
+        [now, deckId]
+    );
+}
+
+// azuriranje kartice nakon odgovora
+export function updateCardAfterReview(id: number, card: Card) {
+    db.runSync(
+        `UPDATE questions SET
+        due = ?, stability = ?, difficulty = ?, elapsed_days = ?, scheduled_days = ?, learning_steps = ?, reps = ?, lapses = ?, state = ?, last_review = ?
+        WHERE id = ?`,
+        [
+            card.due.toISOString(),
+            card.stability,
+            card.difficulty,
+            card.elapsed_days,
+            card.scheduled_days,
+            card.learning_steps,
+            card.reps,
+            card.lapses,
+            card.state,
+            card.last_review ? card.last_review.toISOString() : null,
+            id,
+        ]
+    );
 }

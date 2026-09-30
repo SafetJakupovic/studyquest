@@ -1,10 +1,15 @@
 import { useState, useEffect } from 'react';
+import { styles } from './src/styles/styles';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View, TextInput, Button, ActivityIndicator, ScrollView, Platform, KeyboardAvoidingView, Pressable } from 'react-native';
+import { Text, View, TextInput, Button, ActivityIndicator, ScrollView, Platform, KeyboardAvoidingView, Pressable } from 'react-native';
 import { generateQuestions, Question } from './src/api/gemini';
 import { initDatabase, insertQuestions, getAllQuestions, StoredQuestion } from './src/db/database';
 import { fsrs, generatorParameters, Rating, type Card, type Grade } from 'ts-fsrs';
-import { getDueQuestions, updateCardAfterReview, getQuestionById, DeckStats, getDeckStats, createDeck } from './src/db/database';
+import { getDueQuestions, updateCardAfterReview, getQuestionById, DeckStats, getDeckStats, createDeck, getStats, applyReviewReward, Stats } from './src/db/database';
+import { StatsBar } from './src/components/StatsBar';
+import { ManualEntryForm } from './src/components/ManualEntryForm';
+import { QuestionCard } from './src/components/QuestionCard';
+import { DeckPicker } from './src/components/DeckPicker';
 
 const scheduler = fsrs(generatorParameters());
 const SESSION_WINDOW_MS = 20 * 60 * 1000; // pitanja koja su na redu u narednih 20 minuta ostaju u sesiji, da se ne razvlaci puno
@@ -26,13 +31,15 @@ export default function App() {
 
   const [decks, setDecks] = useState<DeckStats[]>([]);
   const [selectedDeckId, setSelectedDeckId] = useState<number | null>(null);
-  const [newDeckName, setNewDeckName] = useState('');
+
+  const [stats, setStats] = useState<Stats | null>(null);
 
   useEffect(() => {
     initDatabase();
     const stats = getDeckStats();
     setDecks(stats);
     setSelectedDeckId(stats[0]?.id ?? null);
+    setStats(getStats());
     setSaved(getAllQuestions());
   }, []);
   // [] znaci samo jednom pokrenuti, ne pri svakom re-renderu
@@ -41,13 +48,12 @@ export default function App() {
     setDecks(getDeckStats());
   }
 
-  function handleCreateDeck() {
-    const name = newDeckName.trim();
-    if (name == '') return;
+
+  // atp se ne isplati prebacivati jos vise u deck picker, ali barem je iole urednije ovdje pa nema veze, a ne bih (barem za sad?) globalne state menadzere ubacivao
+  function handleCreateDeck(name: string) {
     try {
       const id = createDeck(name);
       setSelectedDeckId(id);
-      setNewDeckName('');
       refreshDecks(); // decks se cuva u stateu kao kopija onoga sto je u bazi
       // baza se ne javlja reactu kad se promijeni pa se trebaju opet citati podaci
     } catch (e: any) {
@@ -80,14 +86,13 @@ export default function App() {
     };
 
     const result = scheduler.next(cardBefore, new Date(), grade);
-    console.log('ocjena:', grade, 'novi due:', result.card.due.toISOString(), 'state:', result.card.state);
     updateCardAfterReview(current.id, result.card);
-    const fresh = getQuestionById(current.id);
-    console.log('PRIJE :', current.due, 'state', current.state, 'steps', current.learning_steps, 'reps', current.reps);
-    console.log('RESULT:', result.card.due.toISOString(), 'state', result.card.state, 'steps', result.card.learning_steps, 'reps', result.card.reps);
-    console.log('BAZA  :', fresh?.due, 'state', fresh?.state, 'steps', fresh?.learning_steps, 'reps', fresh?.reps);
-
     const dueSoon = result.card.due.getTime() - Date.now() <= SESSION_WINDOW_MS;
+
+    if (!dueSoon) {
+      const newStats = applyReviewReward(grade);
+      setStats(newStats);
+    }
 
     setDueQueue(prev => {
       const rest = prev.slice(1);
@@ -129,6 +134,14 @@ export default function App() {
     setPendingQueue(prev => prev.slice(1)); // samo ukloni, ne cuvaj
   }
 
+  function handleManualAdd(question: string, answer: string) {
+    if (selectedDeckId === null)
+      return;
+    insertQuestions([{ question, answer, sourceText: 'ručni unos' }], selectedDeckId);
+    setSaved(getAllQuestions());
+    refreshDecks();
+  }
+
   // dovoljno da nam sljedecu u nizu bude prvo ako samo izbacujemo iz niza
   const currentQuestion = pendingQueue[0];
   // da se koristio useState za trenutno pitanje koje se prikazuje (da se koristilo i pendingQueue niz i currentIndex broj) pri svakom prihvatanju/odbacivanju morase azurairati oba na ispravan nacin
@@ -141,27 +154,20 @@ export default function App() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.container}
         keyboardShouldPersistTaps="handled">
+        {stats && <StatsBar stats={stats} />}
+
+        <DeckPicker
+          decks={decks}
+          selectedDeckId={selectedDeckId}
+          onSelect={setSelectedDeckId}
+          onCreate={handleCreateDeck}
+        />
 
         {pendingQueue.length === 0 && dueQueue.length === 0 && (
-          <><Text style={styles.label}>Špil (učeći/ukupno):</Text><View style={styles.chipRow}>
-            {decks.map(d => (
-              <Pressable
-                key={d.id}
-                onPress={() => setSelectedDeckId(d.id)}
-                style={[styles.chip, d.id === selectedDeckId && styles.chipSelected]}
-              >
-                <Text>{d.name} ({d.due}/{d.total})</Text>
-              </Pressable>
-            ))}
-          </View>
-            <TextInput
-              style={styles.input}
-              placeholder="Naziv novog špila..."
-              value={newDeckName}
-              onChangeText={setNewDeckName} /><Button title="Dodaj špil" onPress={handleCreateDeck}
-            />
-            <Button title="Pokreni dnevnu sesiju" onPress={startSession} /></>
+          <Button title="Pokreni dnevnu sesiju" onPress={startSession} />
         )}
+
+        <ManualEntryForm onAdd={handleManualAdd} />
 
         {info !== '' && <Text style={styles.counter}>{info}</Text>}
 
@@ -169,10 +175,10 @@ export default function App() {
         {dueQueue.length > 0 && (
           <View style={styles.reviewArea}>
             <Text style={styles.counter}>Preostalo u sesiji: {dueQueue.length}</Text>
-            <View style={styles.card}>
-              <Text style={styles.question}>{dueQueue[0].question}</Text>
-              {showAnswer && <Text style={styles.answer}>{dueQueue[0].answer}</Text>}
-            </View>
+            <QuestionCard
+              question={dueQueue[0].question}
+              answer={showAnswer ? dueQueue[0].answer : undefined}
+            />
 
             {!showAnswer ? (
               <Button title="Prikazi odgovor" onPress={() => setShowAnswer(true)} />
@@ -213,10 +219,10 @@ export default function App() {
         {currentQuestion && (
           <View style={styles.reviewArea}>
             <Text style={styles.counter}>Preostalo za pregled: {pendingQueue.length}</Text>
-            <View style={styles.card}>
-              <Text style={styles.question}>{currentQuestion.question}</Text>
-              <Text style={styles.answer}>{currentQuestion.answer}</Text>
-            </View>
+            <QuestionCard
+              question={currentQuestion.question}
+              answer={currentQuestion.answer}
+            />
             <View style={styles.buttonRow}>
               <Button title="Odbaci" color="#c0392b" onPress={handleReject} />
               <Button title="Prihvati" color="#27ae60" onPress={handleAccept} />
@@ -229,84 +235,3 @@ export default function App() {
     </KeyboardAvoidingView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flexGrow: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    paddingTop: 60,
-    paddingBottom: 60,
-    padding: 20,
-  },
-  label: {
-    fontSize: 16,
-    marginBottom: 10,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
-    width: '100%',
-    minHeight: 100,
-    padding: 10,
-    textAlignVertical: 'top',
-    marginBottom: 10,
-  },
-  error: {
-    color: 'red',
-    marginBottom: 10,
-  },
-  output: {
-    marginTop: 20,
-    fontSize: 14,
-  },
-  card: {
-    width: '100%',
-    backgroundColor: '#f2f2f2',
-    borderRadius: 8,
-    padding: 16,
-    marginTop: 10,
-    minHeight: 120,
-  },
-  question: {
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
-  answer: {
-    marginTop: 8,
-    fontSize: 15,
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    width: '100%',
-    marginTop: 20,
-  },
-  reviewArea: {
-    width: '100%',
-    alignItems: 'center',
-  },
-  counter: {
-    fontSize: 14,
-    marginTop: 10,
-    color: '#555',
-  },
-  chipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 10
-  },
-  chip: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 6
-  },
-  chipSelected: {
-    backgroundColor: '#d6eaff',
-    borderColor: '#2980b9'
-  },
-});

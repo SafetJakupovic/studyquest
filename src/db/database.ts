@@ -72,6 +72,23 @@ export function initDatabase() {
         });
     }
 
+    if (version < 2) {
+        db.withTransactionSync(() => {
+            db.execSync(`
+                CREATE TABLE IF NOT EXISTS stats (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    xp INTEGER NOT NULL DEFAULT 0,
+                    coins INTEGER NOT NULL DEFAULT 0,
+                    gameBudget REAL NOT NULL DEFAULT 0,
+                    streak INTEGER NOT NULL DEFAULT 0,
+                    lastStudyDate TEXT
+                );
+            `);
+            db.runSync('INSERT OR IGNORE INTO stats (id, xp, coins, gameBudget, streak, lastStudyDate) VALUES (1, 0, 0, 0, 0, NULL)');
+            db.execSync('PRAGMA user_version = 2');
+        })
+    }
+
     // ocistio bazu s ovim kad sam pogresan format stavio
     // moze se obrisati, ali neka
     db.runSync(
@@ -171,4 +188,43 @@ export function updateCardAfterReview(id: number, card: Card) {
             id,
         ]
     );
+}
+
+export type Stats = {
+    id: number;
+    xp: number;
+    coins: number;
+    gameBudget: number;
+    streak: number;
+    lastStudyDate: string | null;
+};
+
+export function getStats(): Stats {
+    return db.getFirstSync<Stats>('SELECT * FROM stats WHERE id = 1')!; // ! NIJE null
+}
+
+const GRADE_REWARDS: Record<number, number> = {
+    1: 0,   //opet
+    2: 1,   //tesko
+    3: 2,  //dobro
+    4: 3,  //lako
+};
+
+export function applyReviewReward(grade: number): Stats {
+    const amount = GRADE_REWARDS[grade];
+    const today = new Date().toISOString().slice(0, 10);
+    const current = getStats();
+
+    let newStreak = current.streak;
+    if (current.lastStudyDate !== today) {
+        const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        newStreak = current.lastStudyDate === yesterday ? current.streak + 1 : 1;
+    }
+
+    db.runSync(
+        `UPDATE stats SET xp = xp + ?, coins = coins + ?, streak = ?, lastStudyDate = ? WHERE id = 1`,
+        [amount, amount, newStreak, today]
+    );
+
+    return getStats();
 }

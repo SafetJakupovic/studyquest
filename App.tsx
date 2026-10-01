@@ -1,18 +1,18 @@
 import { useState, useEffect } from 'react';
-import { styles } from './src/styles/styles';
 import { StatusBar } from 'expo-status-bar';
-import { Text, View, TextInput, Button, ActivityIndicator, ScrollView, Platform, KeyboardAvoidingView, Pressable } from 'react-native';
 import { generateQuestions, Question } from './src/api/gemini';
 import { initDatabase, insertQuestions, getAllQuestions, StoredQuestion } from './src/db/database';
-import { fsrs, generatorParameters, Rating, type Card, type Grade } from 'ts-fsrs';
+import { fsrs, generatorParameters, type Card, type Grade } from 'ts-fsrs';
 import { getDueQuestions, updateCardAfterReview, getQuestionById, DeckStats, getDeckStats, createDeck, getStats, applyReviewReward, Stats } from './src/db/database';
-import { StatsBar } from './src/components/StatsBar';
-import { ManualEntryForm } from './src/components/ManualEntryForm';
-import { QuestionCard } from './src/components/QuestionCard';
-import { DeckPicker } from './src/components/DeckPicker';
+import { NavigationContainer } from '@react-navigation/native';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { StudyScreen } from './src/screens/StudyScreen';
+import { AddScreen } from './src/screens/AddScreen';
+import { RewardsScreen } from './src/screens/RewardsScreen';
 
 const scheduler = fsrs(generatorParameters());
 const SESSION_WINDOW_MS = 20 * 60 * 1000; // pitanja koja su na redu u narednih 20 minuta ostaju u sesiji, da se ne razvlaci puno
+const Tab = createBottomTabNavigator();
 
 export default function App() {
   const [text, setText] = useState('');
@@ -142,96 +142,49 @@ export default function App() {
     refreshDecks();
   }
 
-  // dovoljno da nam sljedecu u nizu bude prvo ako samo izbacujemo iz niza
-  const currentQuestion = pendingQueue[0];
-  // da se koristio useState za trenutno pitanje koje se prikazuje (da se koristilo i pendingQueue niz i currentIndex broj) pri svakom prihvatanju/odbacivanju morase azurairati oba na ispravan nacin
-  // sa pendingQueue[0] postoji samo jedan izvor, a trenutno pitanje je uvijek samo izvedena vrijednost iz njega, ne posebno stanje koje se cuva
-  // sve u svemu, sto manje useState, to bolje
-
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.container}
-        keyboardShouldPersistTaps="handled">
-        {stats && <StatsBar stats={stats} />}
-
-        <DeckPicker
-          decks={decks}
-          selectedDeckId={selectedDeckId}
-          onSelect={setSelectedDeckId}
-          onCreate={handleCreateDeck}
-        />
-
-        {pendingQueue.length === 0 && dueQueue.length === 0 && (
-          <Button title="Pokreni dnevnu sesiju" onPress={startSession} />
-        )}
-
-        <ManualEntryForm onAdd={handleManualAdd} />
-
-        {info !== '' && <Text style={styles.counter}>{info}</Text>}
-
-        {/* sesija ponavljanja */}
-        {dueQueue.length > 0 && (
-          <View style={styles.reviewArea}>
-            <Text style={styles.counter}>Preostalo u sesiji: {dueQueue.length}</Text>
-            <QuestionCard
-              question={dueQueue[0].question}
-              answer={showAnswer ? dueQueue[0].answer : undefined}
+    <NavigationContainer>
+      <StatusBar style="auto" />
+      <Tab.Navigator>
+        <Tab.Screen name="Učenje">
+          {() => (
+            <StudyScreen
+              decks={decks}
+              selectedDeckId={selectedDeckId}
+              onSelectDeck={setSelectedDeckId}
+              dueQueue={dueQueue}
+              showAnswer={showAnswer}
+              onStartSession={startSession}
+              onShowAnswer={() => setShowAnswer(true)}
+              onRate={handleRate}
+              info={info}
             />
+          )}
+        </Tab.Screen>
 
-            {!showAnswer ? (
-              <Button title="Prikazi odgovor" onPress={() => setShowAnswer(true)} />
-            ) : (
-              <View style={styles.buttonRow}>
-                <Button title="Opet" color="#c0392b" onPress={() => handleRate(Rating.Again)} />
-                <Button title="Teško" color="#e67e22" onPress={() => handleRate(Rating.Hard)} />
-                <Button title="Dobro" color="#27ae60" onPress={() => handleRate(Rating.Good)} />
-                <Button title="Lako" color="#2980b9" onPress={() => handleRate(Rating.Easy)} />
-              </View>
-            )}
-          </View>
-        )}
-
-        {/* ako nema pending pitanja, prikazi formu za unos gradiva */}
-        {pendingQueue.length === 0 && (
-          <>
-            <Text style={styles.label}>Unesi gradivo:</Text>
-            <TextInput
-              style={styles.input}
-              multiline
-              placeholder="Zalijepi tekst ovdje..."
-              value={text}
+        <Tab.Screen name="Dodaj">
+          {() => (
+            <AddScreen
+              text={text}
               onChangeText={setText}
+              onSubmit={handleSubmit}
+              loading={loading}
+              error={error}
+              saved={saved.length}
+              deckName={decks.find(d => d.id === selectedDeckId)?.name}
+              pendingQueue={pendingQueue}
+              onAccept={handleAccept}
+              onReject={handleReject}
+              onManualAdd={handleManualAdd}
+              onCreateDeck={handleCreateDeck}
             />
-            {/* disabled loading da se ne moze kliknuti dva puta dok se generise*/}
-            <Text style={styles.counter}>
-              Pitanja idu u špil: {decks.find(d => d.id === selectedDeckId)?.name}
-            </Text>
-            <Button title="Generisi pitanja" onPress={handleSubmit} disabled={loading} />
-            <Text>Ukupno sacuvano: {saved.length}</Text>
-            {loading && <ActivityIndicator style={{ marginTop: 20 }} />}
-            {error !== '' && <Text style={styles.error}>Greska: {error}</Text>}
-          </>
-        )}
+          )}
+        </Tab.Screen>
 
-        {/* ako ima pending pitanja, prikazi prvo pitanje i dugmice za prihvati/odbaci */}
-        {currentQuestion && (
-          <View style={styles.reviewArea}>
-            <Text style={styles.counter}>Preostalo za pregled: {pendingQueue.length}</Text>
-            <QuestionCard
-              question={currentQuestion.question}
-              answer={currentQuestion.answer}
-            />
-            <View style={styles.buttonRow}>
-              <Button title="Odbaci" color="#c0392b" onPress={handleReject} />
-              <Button title="Prihvati" color="#27ae60" onPress={handleAccept} />
-            </View>
-          </View>
-        )}
-
-        <StatusBar style="auto" />
-      </ScrollView>
-    </KeyboardAvoidingView>
+        <Tab.Screen name="Nagrade">
+          {() => <RewardsScreen stats={stats} />}
+        </Tab.Screen>
+      </Tab.Navigator>
+    </NavigationContainer>
   );
 }

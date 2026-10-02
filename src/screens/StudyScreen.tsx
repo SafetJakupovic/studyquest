@@ -16,16 +16,23 @@ type Props = {
     onShowAnswer: () => void;
     onRate: (grade: Grade) => void;
     info: string;
+    navigation: any;
 };
 
 export function StudyScreen({
-    decks, selectedDeckId, onSelectDeck, dueQueue, showAnswer, onStartSession, onShowAnswer, onRate, info }: Props) {
+    decks, selectedDeckId, onSelectDeck, dueQueue, showAnswer, onStartSession, onShowAnswer, onRate, info, navigation }: Props) {
     return (
         <View style={styles.container}>
             <DeckSelector
                 decks={decks}
                 selectedDeckId={selectedDeckId}
                 onSelect={onSelectDeck}
+            />
+
+            <Button
+                title="Boss Fight"
+                color="#8e44ad"
+                onPress={() => navigation.navigate('BossFight')}
             />
 
             {dueQueue.length === 0 && (

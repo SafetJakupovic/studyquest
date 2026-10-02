@@ -212,14 +212,8 @@ const GRADE_REWARDS: Record<number, number> = {
 
 export function applyReviewReward(grade: number): Stats {
     const amount = GRADE_REWARDS[grade];
-    const today = new Date().toISOString().slice(0, 10);
     const current = getStats();
-
-    let newStreak = current.streak;
-    if (current.lastStudyDate !== today) {
-        const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-        newStreak = current.lastStudyDate === yesterday ? current.streak + 1 : 1;
-    }
+    const { newStreak, today } = updateStreak(current);
 
     db.runSync(
         `UPDATE stats SET xp = xp + ?, coins = coins + ?, streak = ?, lastStudyDate = ? WHERE id = 1`,
@@ -228,3 +222,36 @@ export function applyReviewReward(grade: number): Stats {
 
     return getStats();
 }
+
+export function getRandomQuestions(count: number): StoredQuestion[] {
+    return db.getAllSync<StoredQuestion>(
+        'SELECT * FROM questions ORDER BY RANDOM() LIMIT ?',
+        [count]
+    );
+}
+
+export function applyBossFightReward(correctCount: number, totalCount: number): Stats {
+    const bonusXp = correctCount * 5;
+    const bonusCoins = correctCount * 5;
+    const current = getStats();
+    const { newStreak, today } = updateStreak(current);
+
+    db.runSync(
+        'UPDATE stats SET xp = xp + ?, coins = coins + ?, streak = ?, lastStudyDate = ? WHERE id = 1',
+        [bonusXp, bonusCoins, newStreak, today]
+    );
+
+    return getStats();
+}
+
+function updateStreak(current: Stats): { newStreak: string extends never ? never : number; today: string } {
+    const today = new Date().toISOString().slice(0, 10);
+    let newStreak = current.streak;
+
+    if (current.lastStudyDate !== today) {
+        const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        newStreak = current.lastStudyDate === yesterday ? current.streak + 1 : 1;
+    }
+
+    return { newStreak, today };
+} 

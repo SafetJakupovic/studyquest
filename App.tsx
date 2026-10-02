@@ -9,10 +9,13 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StudyScreen } from './src/screens/StudyScreen';
 import { AddScreen } from './src/screens/AddScreen';
 import { RewardsScreen } from './src/screens/RewardsScreen';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { BossFightScreen } from './src/screens/BossFightScreen';
 
 const scheduler = fsrs(generatorParameters());
 const SESSION_WINDOW_MS = 20 * 60 * 1000; // pitanja koja su na redu u narednih 20 minuta ostaju u sesiji, da se ne razvlaci puno
 const Tab = createBottomTabNavigator();
+const Stack = createNativeStackNavigator();
 
 export default function App() {
   const [text, setText] = useState('');
@@ -142,12 +145,11 @@ export default function App() {
     refreshDecks();
   }
 
-  return (
-    <NavigationContainer>
-      <StatusBar style="auto" />
+  function MainTabs() {
+    return (
       <Tab.Navigator>
         <Tab.Screen name="Učenje">
-          {() => (
+          {({ navigation }) => (
             <StudyScreen
               decks={decks}
               selectedDeckId={selectedDeckId}
@@ -158,6 +160,7 @@ export default function App() {
               onShowAnswer={() => setShowAnswer(true)}
               onRate={handleRate}
               info={info}
+              navigation={navigation}
             />
           )}
         </Tab.Screen>
@@ -185,6 +188,27 @@ export default function App() {
           {() => <RewardsScreen stats={stats} />}
         </Tab.Screen>
       </Tab.Navigator>
+    )
+  }
+
+  return (
+    <NavigationContainer>
+      <StatusBar style="auto" />
+      <Stack.Navigator screenOptions={{ headerShown: false, presentation: 'fullScreenModal' }}>
+        <Stack.Screen name="MainTabs" component={MainTabs} />
+        <Stack.Screen name="BossFight">
+          {/* navigation je proslijedjen svakom ekranu i ima goBack i navigate; glupa komponenta */}
+          {({ navigation }) => (
+            <BossFightScreen
+              onExit={() => navigation.goBack()}
+              onFinish={(newStats) => {
+                setStats(newStats);
+                navigation.goBack();
+              }}
+            />
+          )}
+        </Stack.Screen>
+      </Stack.Navigator>
     </NavigationContainer>
   );
 }

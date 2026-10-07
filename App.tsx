@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { generateQuestions, Question } from './src/api/gemini';
 import { initDatabase, insertQuestions, getAllQuestions, StoredQuestion } from './src/db/database';
@@ -11,11 +11,18 @@ import { AddScreen } from './src/screens/AddScreen';
 import { RewardsScreen } from './src/screens/RewardsScreen';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { BossFightScreen } from './src/screens/BossFightScreen';
+import { ManageDeckScreen } from './src/screens/ManageDeckScreen';
 
 const scheduler = fsrs(generatorParameters());
 const SESSION_WINDOW_MS = 20 * 60 * 1000; // pitanja koja su na redu u narednih 20 minuta ostaju u sesiji, da se ne razvlaci puno
 const Tab = createBottomTabNavigator();
-const Stack = createNativeStackNavigator();
+
+type RootStackParamList = {
+  MainTabs: undefined;
+  BossFight: undefined;
+  ManageDeck: { deckId: number };
+}
+const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function App() {
   const [text, setText] = useState('');
@@ -47,9 +54,9 @@ export default function App() {
   }, []);
   // [] znaci samo jednom pokrenuti, ne pri svakom re-renderu
 
-  function refreshDecks() {
+  const refreshDecks = useCallback(() => {
     setDecks(getDeckStats());
-  }
+  }, []);
 
 
   // atp se ne isplati prebacivati jos vise u deck picker, ali barem je iole urednije ovdje pa nema veze, a ne bih (barem za sad?) globalne state menadzere ubacivao
@@ -137,69 +144,69 @@ export default function App() {
     setPendingQueue(prev => prev.slice(1)); // samo ukloni, ne cuvaj
   }
 
-  function handleManualAdd(question: string, answer: string) {
+  function handleManualAdd(question: string, answer: string, questionImageUri: string | null, answerImageUri: string | null) {
     if (selectedDeckId === null)
       return;
-    insertQuestions([{ question, answer, sourceText: 'ručni unos' }], selectedDeckId);
+    insertQuestions([{ question, answer, sourceText: 'ručni unos', questionImageUri, answerImageUri }], selectedDeckId);
     setSaved(getAllQuestions());
     refreshDecks();
-  }
-
-  function MainTabs() {
-    return (
-      <Tab.Navigator>
-        <Tab.Screen name="Učenje">
-          {({ navigation }) => (
-            <StudyScreen
-              decks={decks}
-              selectedDeckId={selectedDeckId}
-              onSelectDeck={setSelectedDeckId}
-              dueQueue={dueQueue}
-              showAnswer={showAnswer}
-              onStartSession={startSession}
-              onShowAnswer={() => setShowAnswer(true)}
-              onRate={handleRate}
-              info={info}
-              navigation={navigation}
-            />
-          )}
-        </Tab.Screen>
-
-        <Tab.Screen name="Dodaj">
-          {() => (
-            <AddScreen
-              text={text}
-              onChangeText={setText}
-              onSubmit={handleSubmit}
-              loading={loading}
-              error={error}
-              saved={saved.length}
-              deckName={decks.find(d => d.id === selectedDeckId)?.name}
-              pendingQueue={pendingQueue}
-              onAccept={handleAccept}
-              onReject={handleReject}
-              onManualAdd={handleManualAdd}
-              onCreateDeck={handleCreateDeck}
-            />
-          )}
-        </Tab.Screen>
-
-        <Tab.Screen name="Nagrade">
-          {() => <RewardsScreen stats={stats} />}
-        </Tab.Screen>
-      </Tab.Navigator>
-    )
   }
 
   return (
     <NavigationContainer>
       <StatusBar style="auto" />
       <Stack.Navigator screenOptions={{ headerShown: false, presentation: 'fullScreenModal' }}>
-        <Stack.Screen name="MainTabs" component={MainTabs} />
+        <Stack.Screen name="MainTabs">
+          {() => (
+            <Tab.Navigator>
+              <Tab.Screen name="Učenje">
+                {({ navigation }) => (
+                  <StudyScreen
+                    decks={decks}
+                    selectedDeckId={selectedDeckId}
+                    onSelectDeck={setSelectedDeckId}
+                    dueQueue={dueQueue}
+                    showAnswer={showAnswer}
+                    onStartSession={startSession}
+                    onShowAnswer={() => setShowAnswer(true)}
+                    onRate={handleRate}
+                    info={info}
+                    navigation={navigation}
+                    onFocus={refreshDecks}
+                  />
+                )}
+              </Tab.Screen>
+
+              <Tab.Screen name="Dodaj">
+                {() => (
+                  <AddScreen
+                    text={text}
+                    onChangeText={setText}
+                    onSubmit={handleSubmit}
+                    loading={loading}
+                    error={error}
+                    saved={saved.length}
+                    deckName={decks.find(d => d.id === selectedDeckId)?.name}
+                    pendingQueue={pendingQueue}
+                    onAccept={handleAccept}
+                    onReject={handleReject}
+                    onManualAdd={handleManualAdd}
+                    onCreateDeck={handleCreateDeck}
+                  />
+                )}
+              </Tab.Screen>
+
+              <Tab.Screen name="Nagrade">
+                {() => <RewardsScreen stats={stats} onStatsChange={setStats} />}
+              </Tab.Screen>
+            </Tab.Navigator>
+          )}
+        </Stack.Screen>
+
         <Stack.Screen name="BossFight">
-          {/* navigation je proslijedjen svakom ekranu i ima goBack i navigate; glupa komponenta */}
           {({ navigation }) => (
             <BossFightScreen
+              deckId={selectedDeckId}
               onExit={() => navigation.goBack()}
               onFinish={(newStats) => {
                 setStats(newStats);
@@ -208,7 +215,17 @@ export default function App() {
             />
           )}
         </Stack.Screen>
+
+        <Stack.Screen name="ManageDeck">
+          {({ navigation, route }) => (
+            <ManageDeckScreen
+              deckId={route.params.deckId}
+              deckName={decks.find(d => d.id === route.params.deckId)?.name ?? ''}
+              onExit={() => navigation.goBack()}
+            />
+          )}
+        </Stack.Screen>
       </Stack.Navigator>
     </NavigationContainer>
-  );
+  )
 }

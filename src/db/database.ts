@@ -1,6 +1,9 @@
 import * as SQLite from 'expo-sqlite';
 import { createEmptyCard, type Card } from 'ts-fsrs';
 
+export const COINS_PER_MINUTE = 1;
+export const COINS_PER_KM = 100;
+
 export type DeckStats = {
     id: number;
     name: string;
@@ -26,6 +29,8 @@ export type StoredQuestion = {
     state: number;
     last_review: string | null;
     deck_id: number | null;
+    questionImageUri: string | null;
+    answerImageUri: string | null;
 };
 
 const db = SQLite.openDatabaseSync('studyquest.db');
@@ -89,11 +94,41 @@ export function initDatabase() {
         })
     }
 
+    if (version < 3) {
+        db.withTransactionSync(() => {
+            db.execSync(`
+                ALTER TABLE questions ADD COLUMN questionImageUri TEXT;
+                ALTER TABLE questions ADD COLUMN answerImageUri TEXT;
+                `);
+            db.execSync('PRAGMA user_version = 3');
+        });
+    }
+
     // ocistio bazu s ovim kad sam pogresan format stavio
     // moze se obrisati, ali neka
     db.runSync(
         "UPDATE questions SET last_review = NULL WHERE last_review IS NOT NULL AND last_review NOT LIKE '____-__-__T%'"
     );
+}
+
+export function exchangeCoinsForMinutes(minutes: number): Stats {
+    const cost = minutes * COINS_PER_MINUTE;
+    const current = getStats();
+    if (current.coins < cost) {
+        throw new Error("Nemaš dovoljno coins.");
+    }
+    db.runSync("UPDATE stats SET coins = coins - ? WHERE id = 1", [cost]);
+    return getStats();
+}
+
+export function exchangeCoinsForBudget(km: number): Stats {
+    const cost = km * COINS_PER_KM;
+    const current = getStats();
+    if (current.coins < cost) {
+        throw new Error("Nemaš dovoljno coins.");
+    }
+    db.runSync("UPDATE stats SET coins = coins - ?, gameBudget = gameBudget + ? WHERE id = 1", [cost, km]);
+    return getStats();
 }
 
 export function getDeckStats(): DeckStats[] {
@@ -122,7 +157,7 @@ export function getQuestionById(id: number): StoredQuestion | null {
 }
 
 export function insertQuestions(
-    items: { question: string; answer: string; sourceText: string }[],
+    items: { question: string; answer: string; sourceText: string, questionImageUri?: string | null, answerImageUri?: string | null }[],
     deckId: number
 ) {
     // sqlite ne zna za JS objekte pa se datimu pretvaraju u string
@@ -132,8 +167,8 @@ export function insertQuestions(
         db.runSync(
             /* ide ? da ne ubacujemo tekst direktno u SQL string (tipa "...VALUES ('" + text + "')") jer to otvara SQL injection napade i puca na specijalnim znakovima */
             `INSERT INTO questions 
-            (question, answer, sourceText, createdAt, due, stability, difficulty, elapsed_days, scheduled_days, learning_steps, reps, lapses, state, last_review, deck_id) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            (question, answer, sourceText, createdAt, due, stability, difficulty, elapsed_days, scheduled_days, learning_steps, reps, lapses, state, last_review, deck_id, questionImageUri, answerImageUri) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 item.question,
                 item.answer,
@@ -150,6 +185,8 @@ export function insertQuestions(
                 card.state,
                 card.last_review ? card.last_review.toISOString() : null,
                 deckId,
+                item.questionImageUri ?? null,
+                item.answerImageUri ?? null,
             ]
         );
     }
@@ -223,10 +260,16 @@ export function applyReviewReward(grade: number): Stats {
     return getStats();
 }
 
-export function getRandomQuestions(count: number): StoredQuestion[] {
+export function getRandomQuestions(count: number, deckId: number | null): StoredQuestion[] {
+    if (deckId == null) {
+        return db.getAllSync<StoredQuestion>(
+            'SELECT * FROM questions ORDER BY RANDOM() LIMIT ?',
+            [count]
+        );
+    }
     return db.getAllSync<StoredQuestion>(
-        'SELECT * FROM questions ORDER BY RANDOM() LIMIT ?',
-        [count]
+        'SELECT * FROM questions WHERE deck_id = ? ORDER BY RANDOM() LIMIT ?',
+        [deckId, count]
     );
 }
 
@@ -244,7 +287,7 @@ export function applyBossFightReward(correctCount: number, totalCount: number): 
     return getStats();
 }
 
-function updateStreak(current: Stats): { newStreak: string extends never ? never : number; today: string } {
+function updateStreak(current: Stats): { newStreak: number; today: string } {
     const today = new Date().toISOString().slice(0, 10);
     let newStreak = current.streak;
 
@@ -254,4 +297,29 @@ function updateStreak(current: Stats): { newStreak: string extends never ? never
     }
 
     return { newStreak, today };
-} 
+}
+
+export function updateQuestionContent(id: number, question: string, answer: string) {
+    db.runSync(
+        'UPDATE questions SET question = ?, answer = ? WHERE id = ?',
+        [question, answer, id]
+    );
+}
+
+export function deleteQuestion(id: number) {
+    db.runSync('DELETE FROM questions WHERE id = ?', [id]);
+}
+
+export function getQuestionsByDeck(deckId: number): StoredQuestion[] {
+    return db.getAllSync<StoredQuestion>(
+        'SELECT * FROM questions WHERE deck_id = ? ORDER BY createdAt DESC',
+        [deckId]
+    );
+}
+
+export function updateQuestionImages(id: number, questionImageUri: string | null, answerImageUri: string | null) {
+    db.runSync(
+        'UPDATE questions SET questionImageUri = ?, answerImageUri = ? WHERE id = ?',
+        [questionImageUri, answerImageUri, id]
+    );
+}

@@ -16,7 +16,7 @@ type Props = {
     pendingQueue: Question[];
     onAccept: () => void;
     onReject: () => void;
-    onManualAdd: (question: string, anwer: string) => void;
+    onManualAdd: (question: string, answer: string, questionImageUri: string | null, answerImageUri: string | null) => void;
     onCreateDeck: (name: string) => void;
 };
 

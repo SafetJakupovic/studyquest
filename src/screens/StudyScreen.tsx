@@ -5,6 +5,8 @@ import { QuestionCard } from '../components/QuestionCard';
 import type { DeckStats, StoredQuestion } from '../db/database';
 import type { Grade } from 'ts-fsrs';
 import { Rating } from 'ts-fsrs';
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback } from 'react';
 
 type Props = {
     decks: DeckStats[];
@@ -17,10 +19,16 @@ type Props = {
     onRate: (grade: Grade) => void;
     info: string;
     navigation: any;
+    onFocus: () => void;
 };
 
 export function StudyScreen({
-    decks, selectedDeckId, onSelectDeck, dueQueue, showAnswer, onStartSession, onShowAnswer, onRate, info, navigation }: Props) {
+    decks, selectedDeckId, onSelectDeck, dueQueue, showAnswer, onStartSession, onShowAnswer, onRate, info, navigation, onFocus }: Props) {
+    useFocusEffect(
+        useCallback(() => {
+            onFocus();
+        }, [onFocus])
+    );
     return (
         <View style={styles.container}>
             <DeckSelector
@@ -35,6 +43,12 @@ export function StudyScreen({
                 onPress={() => navigation.navigate('BossFight')}
             />
 
+            <Button
+                title="Uredi kartice"
+                color="#16a085"
+                onPress={() => navigation.navigate('ManageDeck', { deckId: selectedDeckId })}
+            />
+
             {dueQueue.length === 0 && (
                 <Button title="Pokreni dnevnu sesiju" onPress={onStartSession} />
             )}
@@ -47,6 +61,8 @@ export function StudyScreen({
                     <QuestionCard
                         question={dueQueue[0].question}
                         answer={showAnswer ? dueQueue[0].answer : undefined}
+                        questionImageUri={dueQueue[0].questionImageUri}
+                        answerImageUri={showAnswer ? dueQueue[0].answerImageUri : undefined}
                     />
 
                     {!showAnswer ? (

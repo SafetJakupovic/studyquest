@@ -8,11 +8,12 @@ const QUESTION_COUNT = 10;
 const TIME_LIMIT_SEC = 120;
 
 type Props = {
+    deckId: number | null;
     onFinish: (newStats: Stats) => void;
     onExit: () => void;
 }
 
-export function BossFightScreen({ onFinish, onExit }: Props) {
+export function BossFightScreen({ deckId, onFinish, onExit }: Props) {
     const [questions, setQuestions] = useState<StoredQuestion[]>([]);
     const [index, setIndex] = useState(0);
     const [showAnswer, setShowAnswer] = useState(false);
@@ -22,7 +23,7 @@ export function BossFightScreen({ onFinish, onExit }: Props) {
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null); // promjena .current ne pokrece rerender
 
     useEffect(() => {
-        setQuestions(getRandomQuestions(QUESTION_COUNT));
+        setQuestions(getRandomQuestions(QUESTION_COUNT, deckId));
         // svake sekunde
         intervalRef.current = setInterval(() => {
             setTimeLeft(prev => {

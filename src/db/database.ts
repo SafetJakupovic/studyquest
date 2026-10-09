@@ -33,6 +33,15 @@ export type StoredQuestion = {
     answerImageUri: string | null;
 };
 
+export type Activity = {
+    id: number;
+    name: string;
+    xpReward: number;
+    coinsReward: number;
+}
+
+export type ActivityWithStatus = Activity & { doneToday: boolean };
+
 const db = SQLite.openDatabaseSync('studyquest.db');
 
 export function initDatabase() {
@@ -101,6 +110,34 @@ export function initDatabase() {
                 ALTER TABLE questions ADD COLUMN answerImageUri TEXT;
                 `);
             db.execSync('PRAGMA user_version = 3');
+        });
+    }
+
+    if (version < 4) {
+        db.withTransactionSync(() => {
+            db.execSync(`
+                CREATE TABLE IF NOT EXISTS activities (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    xpReward INTEGER NOT NULL,
+                    coinsReward INTEGER NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS activity_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    activityId INTEGER NOT NULL REFERENCES activities(id),
+                    date TEXT NOT NULL,
+                    UNIQUE(activityId, date)
+                );
+                `);
+            const defaults = [
+                ['Trening', 10, 10],
+                ['10.000 koraka', 7, 7],
+                ['Rastezanje', 5, 5],
+            ];
+            for (const [name, xp, coins] of defaults) {
+                db.runSync('INSERT INTO activities (name, xpReward, coinsReward) VALUES (?, ?, ?)', [name, xp, coins]);
+            }
+            db.execSync('PRAGMA user_version = 4');
         });
     }
 
@@ -322,4 +359,46 @@ export function updateQuestionImages(id: number, questionImageUri: string | null
         'UPDATE questions SET questionImageUri = ?, answerImageUri = ? WHERE id = ?',
         [questionImageUri, answerImageUri, id]
     );
+}
+
+export function getActivitiesWithStatus(): ActivityWithStatus[] {
+    const today = new Date().toISOString().slice(0, 10);
+    // case when vraca null za l.id ako danas nema zapisa
+    return db.getAllSync<ActivityWithStatus>(
+        `SELECT a.*,
+            CASE WHEN l.id IS NULL THEN 0 ELSE 1 END AS doneToday
+        FROM activities a
+        LEFT JOIN activity_log l ON l.activityId = a.id AND l.date = ?
+        ORDER BY a.id`,
+        [today]
+    );
+}
+
+export function toggleActivity(activityId: number, xpReward: number, coinsReward: number): Stats {
+    const today = new Date().toISOString().slice(0, 10);
+    const existing = db.getFirstSync<{ id: number }>(
+        'SELECT id FROM activity_log WHERE activityId = ? AND date = ?',
+        [activityId, today]
+    );
+
+    if (existing) {
+        // vec odradjeno danas, ponisti
+        db.runSync('DELETE FROM activity_log WHERE id = ?', [existing.id]);
+        db.runSync(
+            'UPDATE stats SET xp = xp - ?, coins = coins - ? WHERE id = 1',
+            [xpReward, coinsReward]
+        );
+    } else {
+        // nije odradjeno, oznaci i nagradi
+        db.runSync(
+            'INSERT INTO activity_log (activityId, date) VALUES (?, ?)',
+            [activityId, today]
+        );
+        db.runSync(
+            'UPDATE stats SET xp = xp + ?, coins = coins + ? WHERE id = 1',
+            [xpReward, coinsReward]
+        );
+    }
+
+    return getStats();
 }

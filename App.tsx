@@ -12,6 +12,7 @@ import { RewardsScreen } from './src/screens/RewardsScreen';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { BossFightScreen } from './src/screens/BossFightScreen';
 import { ManageDeckScreen } from './src/screens/ManageDeckScreen';
+import { ActivityScreen } from './src/screens/ActivityScreen';
 
 const scheduler = fsrs(generatorParameters());
 const SESSION_WINDOW_MS = 20 * 60 * 1000; // pitanja koja su na redu u narednih 20 minuta ostaju u sesiji, da se ne razvlaci puno
@@ -144,6 +145,10 @@ export default function App() {
     setPendingQueue(prev => prev.slice(1)); // samo ukloni, ne cuvaj
   }
 
+  /*function handlePdfLoaded(extractedText: string) {
+    setText(extractedText);
+  }*/
+
   function handleManualAdd(question: string, answer: string, questionImageUri: string | null, answerImageUri: string | null) {
     if (selectedDeckId === null)
       return;
@@ -175,6 +180,10 @@ export default function App() {
                     onFocus={refreshDecks}
                   />
                 )}
+              </Tab.Screen>
+
+              <Tab.Screen name="Aktivnost">
+                {() => <ActivityScreen stats={stats} onStatsChange={setStats} />}
               </Tab.Screen>
 
               <Tab.Screen name="Dodaj">

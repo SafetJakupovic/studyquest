@@ -4,6 +4,7 @@ import { QuestionCard } from '../components/QuestionCard';
 import type { Question } from '../api/gemini';
 import { ManualEntryForm } from '../components/ManualEntryForm';
 import { DeckCreateForm } from '../components/DeckCreateForm';
+//import { pickAndReadPdf } from '../utils/pdfReader';
 
 type Props = {
     text: string;
@@ -23,11 +24,24 @@ type Props = {
 export function AddScreen({
     text, onChangeText, onSubmit, loading, error, saved, deckName, pendingQueue, onAccept, onReject, onManualAdd, onCreateDeck }: Props) {
     const currentQuestion = pendingQueue[0];
+
+    /*async function handlePickPdf() {
+        try {
+            const extractedText = await pickAndReadPdf();
+            if (extractedText)
+                onPdfLoaded(extractedText);
+        } catch (e: any) {
+            console.log('PDF greška:', e.message);
+        }
+    }*/
+
     return (
         <ScrollView contentContainerStyle={styles.container}>
             {
                 pendingQueue.length === 0 && (
                     <>
+                        {/*<Button title="Učitaj PDF" onPress={handlePickPdf} />*/}
+
                         <Text style={styles.label}>Unesi gradivo:</Text>
                         <TextInput
                             style={styles.input}
@@ -45,7 +59,6 @@ export function AddScreen({
                         {loading && <ActivityIndicator style={{ marginTop: 20 }} />}
                         {error !== '' && <Text style={styles.error}>Greska: {error}</Text>}
                         <ManualEntryForm onAdd={onManualAdd} />
-
                     </>
                 )
             }

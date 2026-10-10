@@ -3,6 +3,7 @@ import { createEmptyCard, type Card } from 'ts-fsrs';
 
 export const COINS_PER_MINUTE = 1;
 export const COINS_PER_KM = 100;
+export const PAGES_PER_REWARD_UNIT = 1; // 1 coin za jednu stranicu
 
 export type DeckStats = {
     id: number;
@@ -138,6 +139,18 @@ export function initDatabase() {
                 db.runSync('INSERT INTO activities (name, xpReward, coinsReward) VALUES (?, ?, ?)', [name, xp, coins]);
             }
             db.execSync('PRAGMA user_version = 4');
+        });
+    }
+
+    if (version < 5) {
+        db.withTransactionSync(() => {
+            db.execSync(`
+                CREATE TABLE IF NOT EXISTS reading_log (
+                date TEXT PRIMARY KEY,
+                pages INTEGER NOT NULL DEFAULT 0
+                );
+                `);
+            db.execSync('PRAGMA user_version = 5');
         });
     }
 
@@ -399,6 +412,32 @@ export function toggleActivity(activityId: number, xpReward: number, coinsReward
             [xpReward, coinsReward]
         );
     }
+
+    return getStats();
+}
+
+export function getTodayPages(): number {
+    const today = new Date().toISOString().slice(0, 10);
+    const row = db.getFirstSync<{ pages: number }>('SELECT pages FROM reading_log WHERE date = ?', [today]);
+    return row?.pages ?? 0;
+}
+
+export function setTodayPages(newPages: number): Stats {
+    const today = new Date().toISOString().slice(0, 10);
+    const oldPages = getTodayPages();
+
+    if (newPages < 0)
+        newPages = 0;
+
+    const oldUnits = Math.floor(oldPages / PAGES_PER_REWARD_UNIT);
+    const newUnits = Math.floor(newPages / PAGES_PER_REWARD_UNIT);
+    const deltaUnits = newUnits - oldUnits;
+
+    // ako moze update, ako ne onda insert, zavisi od datuma
+    db.runSync('INSERT INTO reading_log (date, pages) VALUES (?, ?) ON CONFLICT(date) DO UPDATE SET pages = excluded.pages', [today, newPages]);
+
+    if (deltaUnits !== 0)
+        db.runSync('UPDATE stats SET xp = xp + ?, coins = coins + ? WHERE id = 1', [deltaUnits, deltaUnits]);
 
     return getStats();
 }

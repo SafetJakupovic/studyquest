@@ -1,11 +1,12 @@
 import { useCallback, useState } from "react";
-import { ActivityWithStatus, getActivitiesWithStatus, Stats, toggleActivity } from "../db/database";
+import { ActivityWithStatus, getActivitiesWithStatus, getTodayPages, PAGES_PER_REWARD_UNIT, setTodayPages, Stats, toggleActivity } from "../db/database";
 import { useFocusEffect } from "@react-navigation/native";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, Text, TextInput, View } from "react-native";
 import { styles } from "../styles/styles";
 import { StatsBar } from "../components/StatsBar";
 import { ScreenBackground } from "../components/ScreenBackground";
 import { colors, fonts, spacing } from "../styles/theme";
+import { AppButton } from "../components/AppButton";
 
 type Props = {
     stats: Stats | null;
@@ -14,9 +15,11 @@ type Props = {
 
 export function ActivityScreen({ stats, onStatsChange }: Props) {
     const [activities, setActivities] = useState<ActivityWithStatus[]>([]);
+    const [pagesInput, setPagesInput] = useState('');
 
     const refresh = useCallback(() => {
         setActivities(getActivitiesWithStatus());
+        setPagesInput(String(getTodayPages()));
     }, []);
 
     // refresh je vec useCallback sa praznim nizom pa je stabilna referenca
@@ -27,6 +30,15 @@ export function ActivityScreen({ stats, onStatsChange }: Props) {
         const newStats = toggleActivity(activity.id, activity.xpReward, activity.coinsReward);
         onStatsChange(newStats);
         refresh();
+    }
+
+    function handleSavePages() {
+        const parsed = parseInt(pagesInput, 10);
+        if (isNaN(parsed))
+            return;
+        const newStats = setTodayPages(parsed);
+        onStatsChange(newStats);
+        setPagesInput(String(parsed));
     }
 
     return (
@@ -53,6 +65,18 @@ export function ActivityScreen({ stats, onStatsChange }: Props) {
                         <Text style={localStyles.reward}>+{a.xpReward} XP / +{a.coinsReward} coins</Text>
                     </Pressable>
                 ))}
+                <View style={styles.divider} />
+                <Text style={styles.sectionTitle}>Čitanje</Text>
+                <Text style={styles.counter}>{PAGES_PER_REWARD_UNIT} stranica = 1 XP / 1 coin</Text>
+                <TextInput
+                    style={styles.input}
+                    keyboardType="numeric"
+                    placeholder="Stranica pročitano danas"
+                    placeholderTextColor={colors.inkMuted}
+                    value={pagesInput}
+                    onChangeText={setPagesInput}
+                />
+                <AppButton title="Sačuvaj" onPress={handleSavePages} />
             </View>
         </ScreenBackground>
     );

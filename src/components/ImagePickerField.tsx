@@ -1,5 +1,8 @@
 import * as ImagePicker from 'expo-image-picker';
-import { Button, Image, StyleSheet, View } from 'react-native';
+import { Button, Image, Modal, Pressable, StyleSheet, View } from 'react-native';
+import { AppButton } from './AppButton';
+import { colors } from '../styles/theme';
+import { useState } from 'react';
 
 type Props = {
     label: string;
@@ -8,6 +11,8 @@ type Props = {
 };
 
 export function ImagePickerField({ label, uri, onChange }: Props) {
+    const [zoomed, setZoomed] = useState(false);
+
     async function pickImage() {
         const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (!permission.granted)
@@ -26,17 +31,35 @@ export function ImagePickerField({ label, uri, onChange }: Props) {
         <View style={localStyles.container}>
             {uri ? (
                 <>
-                    <Image source={{ uri }} style={localStyles.preview} />
-                    <Button title={`Ukloni sliku (${label})`} color="#c0392b" onPress={() => onChange(null)} />
+                    <Pressable onPress={() => setZoomed(true)} style={{ width: '100%' }}>
+                        <Image source={{ uri }} style={localStyles.preview} resizeMode="contain" />
+                    </Pressable>
+                    <AppButton title={`Ukloni sliku (${label})`} variant="danger" onPress={() => onChange(null)} />
+
+                    <Modal visible={zoomed} transparent onRequestClose={() => setZoomed(false)}>
+                        <Pressable style={localStyles.backdrop} onPress={() => setZoomed(false)}>
+                            <Image source={{ uri }} style={localStyles.fullImage} resizeMode="contain" />
+                        </Pressable>
+                    </Modal>
                 </>
             ) : (
-                <Button title={`Dodaj sliku (${label})`} onPress={pickImage} />
+                <AppButton title={`Dodaj sliku (${label})`} variant="secondary" onPress={pickImage} />
             )}
         </View>
     );
 }
 
 const localStyles = StyleSheet.create({
-    container: { marginVertical: 8, alignItems: 'center' },
-    preview: { width: 150, height: 150, borderRadius: 8, marginBottom: 6 },
+    container: { marginVertical: 8, alignItems: 'center', width: '100%' },
+    preview: {
+        width: '100%',
+        height: 220,
+        borderRadius: 6,
+        marginBottom: 8,
+        backgroundColor: colors.surface,
+        borderWidth: 1,
+        borderColor: colors.border,
+    },
+    backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center', alignItems: 'center' },
+    fullImage: { width: '100%', height: '100%' },
 });

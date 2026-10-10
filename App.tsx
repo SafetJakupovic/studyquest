@@ -13,6 +13,11 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { BossFightScreen } from './src/screens/BossFightScreen';
 import { ManageDeckScreen } from './src/screens/ManageDeckScreen';
 import { ActivityScreen } from './src/screens/ActivityScreen';
+import { useFonts, PlayfairDisplay_400Regular, PlayfairDisplay_700Bold } from '@expo-google-fonts/playfair-display';
+import { Lora_400Regular, Lora_600SemiBold } from '@expo-google-fonts/lora';
+import { View, ActivityIndicator } from 'react-native';
+import { colors, fonts } from './src/styles/theme';
+import { CustomTabBar } from './src/components/CustomTabBar';
 
 const scheduler = fsrs(generatorParameters());
 const SESSION_WINDOW_MS = 20 * 60 * 1000; // pitanja koja su na redu u narednih 20 minuta ostaju u sesiji, da se ne razvlaci puno
@@ -26,6 +31,13 @@ type RootStackParamList = {
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function App() {
+  const [fontsLoaded] = useFonts({
+    PlayfairDisplay_400Regular,
+    PlayfairDisplay_700Bold,
+    Lora_400Regular,
+    Lora_600SemiBold,
+  });
+
   const [text, setText] = useState('');
   const [saved, setSaved] = useState<StoredQuestion[]>([]);
   const [loading, setLoading] = useState(false);
@@ -157,13 +169,22 @@ export default function App() {
     refreshDecks();
   }
 
+  if (!fontsLoaded) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1B140F' }}>
+        <ActivityIndicator color="#B08D57" />
+      </View>
+    );
+  }
   return (
     <NavigationContainer>
       <StatusBar style="auto" />
       <Stack.Navigator screenOptions={{ headerShown: false, presentation: 'fullScreenModal' }}>
         <Stack.Screen name="MainTabs">
           {() => (
-            <Tab.Navigator>
+            <Tab.Navigator
+              tabBar={(props) => <CustomTabBar {...props} />}
+              screenOptions={{ headerShown: false }}>
               <Tab.Screen name="Učenje">
                 {({ navigation }) => (
                   <StudyScreen
@@ -187,7 +208,7 @@ export default function App() {
               </Tab.Screen>
 
               <Tab.Screen name="Dodaj">
-                {() => (
+                {({ navigation }) => (
                   <AddScreen
                     text={text}
                     onChangeText={setText}
@@ -201,6 +222,10 @@ export default function App() {
                     onReject={handleReject}
                     onManualAdd={handleManualAdd}
                     onCreateDeck={handleCreateDeck}
+                    selectedDeckId={selectedDeckId}
+                    navigation={navigation}
+                    decks={decks}
+                    onSelectDeck={setSelectedDeckId}
                   />
                 )}
               </Tab.Screen>

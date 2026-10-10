@@ -1,4 +1,4 @@
-import { View, Text, Button } from 'react-native';
+import { View, Text, Button, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { styles } from '../styles/styles';
 import { DeckSelector } from '../components/DeckSelector';
 import { QuestionCard } from '../components/QuestionCard';
@@ -7,6 +7,8 @@ import type { Grade } from 'ts-fsrs';
 import { Rating } from 'ts-fsrs';
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback } from 'react';
+import { ScreenBackground } from '../components/ScreenBackground';
+import { AppButton } from '../components/AppButton';
 
 type Props = {
     decks: DeckStats[];
@@ -30,53 +32,53 @@ export function StudyScreen({
         }, [onFocus])
     );
     return (
-        <View style={styles.container}>
-            <DeckSelector
-                decks={decks}
-                selectedDeckId={selectedDeckId}
-                onSelect={onSelectDeck}
-            />
-
-            <Button
-                title="Boss Fight"
-                color="#8e44ad"
-                onPress={() => navigation.navigate('BossFight')}
-            />
-
-            <Button
-                title="Uredi kartice"
-                color="#16a085"
-                onPress={() => navigation.navigate('ManageDeck', { deckId: selectedDeckId })}
-            />
-
-            {dueQueue.length === 0 && (
-                <Button title="Pokreni dnevnu sesiju" onPress={onStartSession} />
-            )}
-            {info !== '' && <Text style={styles.counter}>{info}</Text>}
-
-            {/* sesija ponavljanja */}
-            {dueQueue.length > 0 && (
-                <View style={styles.reviewArea}>
-                    <Text style={styles.counter}>Preostalo u sesiji: {dueQueue.length}</Text>
-                    <QuestionCard
-                        question={dueQueue[0].question}
-                        answer={showAnswer ? dueQueue[0].answer : undefined}
-                        questionImageUri={dueQueue[0].questionImageUri}
-                        answerImageUri={showAnswer ? dueQueue[0].answerImageUri : undefined}
+        <ScreenBackground>
+            <ScrollView>
+                <View style={styles.container}>
+                    <DeckSelector
+                        decks={decks}
+                        selectedDeckId={selectedDeckId}
+                        onSelect={onSelectDeck}
                     />
 
-                    {!showAnswer ? (
-                        <Button title="Prikazi odgovor" onPress={onShowAnswer} />
-                    ) : (
-                        <View style={styles.buttonRow}>
-                            <Button title="Opet" color="#c0392b" onPress={() => onRate(Rating.Again)} />
-                            <Button title="Teško" color="#e67e22" onPress={() => onRate(Rating.Hard)} />
-                            <Button title="Dobro" color="#27ae60" onPress={() => onRate(Rating.Good)} />
-                            <Button title="Lako" color="#2980b9" onPress={() => onRate(Rating.Easy)} />
+                    <View style={styles.divider} />
+
+                    <AppButton
+                        title="Boss Fight"
+                        variant="secondary"
+                        onPress={() => navigation.navigate('BossFight')}
+                    />
+
+                    {dueQueue.length === 0 && (
+                        <AppButton title="Pokreni dnevnu sesiju" onPress={onStartSession} />
+                    )}
+                    {info !== '' && <Text style={styles.counter}>{info}</Text>}
+
+                    {/* sesija ponavljanja */}
+                    {dueQueue.length > 0 && (
+                        <View style={styles.reviewArea}>
+                            <Text style={styles.counter}>Preostalo u sesiji: {dueQueue.length}</Text>
+                            <QuestionCard
+                                question={dueQueue[0].question}
+                                answer={showAnswer ? dueQueue[0].answer : undefined}
+                                questionImageUri={dueQueue[0].questionImageUri}
+                                answerImageUri={showAnswer ? dueQueue[0].answerImageUri : undefined}
+                            />
+
+                            {!showAnswer ? (
+                                <AppButton title="Prikazi odgovor" onPress={onShowAnswer} />
+                            ) : (
+                                <View style={styles.buttonRow}>
+                                    <AppButton title="Opet" variant="wine" onPress={() => onRate(Rating.Again)} />
+                                    <AppButton title="Teško" variant="rust" onPress={() => onRate(Rating.Hard)} />
+                                    <AppButton title="Dobro" variant="slate" onPress={() => onRate(Rating.Good)} />
+                                    <AppButton title="Lako" variant="sage" onPress={() => onRate(Rating.Easy)} />
+                                </View>
+                            )}
                         </View>
                     )}
                 </View>
-            )}
-        </View>
+            </ScrollView>
+        </ScreenBackground>
     );
 }

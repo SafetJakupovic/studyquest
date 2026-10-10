@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { View, Text, TextInput, Button } from 'react-native';
 import { styles } from '../styles/styles';
 import { ImagePickerField } from './ImagePickerField';
+import { AppButton } from './AppButton';
 
 type Props = {
     onAdd: (question: string, answer: string, questionImageUri: string | null, answerImageUri: string | null) => void;
@@ -48,7 +49,7 @@ export function ManualEntryForm({ onAdd }: Props) {
                 uri={answerImageUri}
                 onChange={setAnswerImageUri}
             />
-            <Button title="Dodaj pitanje" onPress={handleAdd} />
+            <AppButton title="Dodaj pitanje" onPress={handleAdd} />
         </View>
     );
 }

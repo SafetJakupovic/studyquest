@@ -3,6 +3,8 @@ import { applyBossFightReward, getRandomQuestions, Stats, StoredQuestion } from 
 import { styles } from '../styles/styles';
 import { Button, ScrollView, Text, View } from 'react-native';
 import { QuestionCard } from '../components/QuestionCard';
+import { ScreenBackground } from '../components/ScreenBackground';
+import { AppButton } from '../components/AppButton';
 
 const QUESTION_COUNT = 10;
 const TIME_LIMIT_SEC = 120;
@@ -83,22 +85,24 @@ export function BossFightScreen({ deckId, onFinish, onExit }: Props) {
     const current = questions[index];
 
     return (
-        <ScrollView contentContainerStyle={styles.container}>
-            <Text style={{ fontSize: 18, fontWeight: 'bold', color: timeLeft <= 10 ? 'red' : '#333' }}>{timeLeft}s</Text>
-            <Text style={styles.counter}>Pitanje {index + 1} / {questions.length}</Text>
+        <ScreenBackground>
+            <ScrollView contentContainerStyle={styles.container}>
+                <Text style={{ fontSize: 18, fontWeight: 'bold', color: timeLeft <= 10 ? 'red' : '#333' }}>{timeLeft}s</Text>
+                <Text style={styles.counter}>Pitanje {index + 1} / {questions.length}</Text>
 
-            <QuestionCard question={current.question} answer={showAnswer ? current.answer : undefined} />
+                <QuestionCard question={current.question} answer={showAnswer ? current.answer : undefined} />
 
-            {!showAnswer ? (
-                <Button title="Prikaži odgovor" onPress={() => setShowAnswer(true)} />
-            ) : (
-                <View style={styles.buttonRow}>
-                    <Button title="Nisam znao" color="#c0392b" onPress={() => handleAnswer(false)} />
-                    <Button title="Znao sam" color="#27ae60" onPress={() => handleAnswer(true)} />
-                </View>
-            )}
+                {!showAnswer ? (
+                    <AppButton title="Prikaži odgovor" onPress={() => setShowAnswer(true)} />
+                ) : (
+                    <View style={styles.buttonRow}>
+                        <AppButton title="Nisam znao" variant='wine' onPress={() => handleAnswer(false)} />
+                        <AppButton title="Znao sam" variant='sage' onPress={() => handleAnswer(true)} />
+                    </View>
+                )}
 
-            <Button title="Odustani" color="#888" onPress={onExit} />
-        </ScrollView>
+                <AppButton title="Odustani" onPress={onExit} />
+            </ScrollView>
+        </ScreenBackground>
     );
 }

@@ -19,7 +19,7 @@ export function DeckSelector({ decks, selectedDeckId, onSelect }: Props) {
                         onPress={() => onSelect(d.id)}
                         style={[styles.chip, d.id === selectedDeckId && styles.chipSelected]}
                     >
-                        <Text>{d.name} ({d.due}/{d.total})</Text>
+                        <Text style={styles.chipText}>{d.name} ({d.due}/{d.total})</Text>
                     </Pressable>
                 ))}
             </View>

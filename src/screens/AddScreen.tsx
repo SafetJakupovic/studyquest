@@ -1,10 +1,18 @@
-import { View, Text, Button, TextInput, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, Button, TextInput, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { styles } from '../styles/styles';
 import { QuestionCard } from '../components/QuestionCard';
 import type { Question } from '../api/gemini';
 import { ManualEntryForm } from '../components/ManualEntryForm';
 import { DeckCreateForm } from '../components/DeckCreateForm';
+import { useState } from 'react';
+import { ScreenBackground } from '../components/ScreenBackground';
+import { AppButton } from '../components/AppButton';
+import { colors } from '../styles/theme';
+import { DeckStats } from '../db/database';
+import { DeckSelector } from '../components/DeckSelector';
 //import { pickAndReadPdf } from '../utils/pdfReader';
+
+type Section = 'generate' | 'manual' | 'manage';
 
 type Props = {
     text: string;
@@ -19,11 +27,17 @@ type Props = {
     onReject: () => void;
     onManualAdd: (question: string, answer: string, questionImageUri: string | null, answerImageUri: string | null) => void;
     onCreateDeck: (name: string) => void;
+    selectedDeckId: number | null;
+    navigation: any;
+    decks: DeckStats[];
+    onSelectDeck: (id: number) => void;
 };
 
 export function AddScreen({
-    text, onChangeText, onSubmit, loading, error, saved, deckName, pendingQueue, onAccept, onReject, onManualAdd, onCreateDeck }: Props) {
+    text, onChangeText, onSubmit, loading, error, saved, deckName, pendingQueue, onAccept, onReject, onManualAdd, onCreateDeck, selectedDeckId, navigation, decks, onSelectDeck }: Props) {
+    const [section, setSection] = useState<Section>('generate');
     const currentQuestion = pendingQueue[0];
+    const activeSection = currentQuestion ? 'generate' : section;
 
     /*async function handlePickPdf() {
         try {
@@ -36,50 +50,72 @@ export function AddScreen({
     }*/
 
     return (
-        <ScrollView contentContainerStyle={styles.container}>
-            {
-                pendingQueue.length === 0 && (
-                    <>
-                        {/*<Button title="Učitaj PDF" onPress={handlePickPdf} />*/}
+        <ScreenBackground>
+            <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+                <View style={styles.chipRow}>
+                    {(['generate', 'manual', 'manage'] as Section[]).map(s => (
+                        <AppButton
+                            key={s}
+                            title={s === 'generate' ? 'Generiši' : s === 'manual' ? 'Ručno' : 'Uredi kartice'}
+                            variant={activeSection === s ? 'primary' : 'secondary'}
+                            onPress={() => setSection(s)}
+                            disabled={!!currentQuestion && s !== 'generate'}
+                        />
+                    ))}
+                </View>
 
-                        <Text style={styles.label}>Unesi gradivo:</Text>
+                <DeckSelector decks={decks} selectedDeckId={selectedDeckId} onSelect={onSelectDeck} />
+
+                <View style={styles.divider} />
+
+                {activeSection === 'generate' && !currentQuestion && (
+                    <>
+                        <Text style={styles.sectionTitle}>Novo gradivo</Text>
+                        <Text style={styles.label}>Unesi tekst:</Text>
                         <TextInput
-                            style={styles.input}
+                            style={[styles.input, { minHeight: 100, textAlignVertical: 'top' }]}
                             multiline
                             placeholder="Zalijepi tekst ovdje..."
+                            placeholderTextColor={colors.inkMuted}
                             value={text}
                             onChangeText={onChangeText}
                         />
-                        {/* disabled loading da se ne moze kliknuti dva puta dok se generise*/}
-
-                        <Text style={styles.counter}>Pitanja idu u špil: {deckName}</Text>
-
-                        <Button title="Generisi pitanja" onPress={onSubmit} disabled={loading} />
-                        <Text>Ukupno sacuvano: {saved}</Text>
-                        {loading && <ActivityIndicator style={{ marginTop: 20 }} />}
-                        {error !== '' && <Text style={styles.error}>Greska: {error}</Text>}
-                        <ManualEntryForm onAdd={onManualAdd} />
+                        <AppButton title="Generiši pitanja" onPress={onSubmit} disabled={loading} />
+                        {error !== '' && <Text style={styles.error}>{error}</Text>}
                     </>
-                )
-            }
+                )}
 
-            {/* ako ima pending pitanja, prikazi prvo pitanje i dugmice za prihvati/odbaci */}
-            {
-                currentQuestion && (
+                {currentQuestion && (
                     <View style={styles.reviewArea}>
+                        <Text style={styles.sectionTitle}>Pregled</Text>
                         <Text style={styles.counter}>Preostalo za pregled: {pendingQueue.length}</Text>
-                        <QuestionCard
-                            question={currentQuestion.question}
-                            answer={currentQuestion.answer}
-                        />
+                        <QuestionCard question={currentQuestion.question} answer={currentQuestion.answer} />
                         <View style={styles.buttonRow}>
-                            <Button title="Odbaci" color="#c0392b" onPress={onReject} />
-                            <Button title="Prihvati" color="#27ae60" onPress={onAccept} />
+                            <AppButton title="Odbaci" variant="danger" onPress={onReject} />
+                            <AppButton title="Prihvati" onPress={onAccept} />
                         </View>
                     </View>
-                )
-            }
-            <DeckCreateForm onCreate={onCreateDeck} />
-        </ScrollView>
+                )}
+
+                {activeSection === 'manual' && !currentQuestion && (
+                    <>
+                        <Text style={styles.sectionTitle}>Ručni unos</Text>
+                        <ManualEntryForm onAdd={onManualAdd} />
+                    </>
+                )}
+
+                {activeSection === 'manage' && !currentQuestion && (
+                    <>
+                        <Text style={styles.sectionTitle}>Špilovi</Text>
+                        <DeckCreateForm onCreate={onCreateDeck} />
+                        <AppButton
+                            title="Otvori i uredi kartice trenutnog špila"
+                            variant="secondary"
+                            onPress={() => navigation.navigate('ManageDeck', { deckId: selectedDeckId })}
+                        />
+                    </>
+                )}
+            </ScrollView>
+        </ScreenBackground>
     );
 }

@@ -3,6 +3,8 @@ import { deleteQuestion, StoredQuestion, updateQuestionContent, updateQuestionIm
 import { Alert, Button, ScrollView, Text, TextInput, View } from "react-native";
 import { styles } from "../styles/styles";
 import { ImagePickerField } from "../components/ImagePickerField";
+import { ScreenBackground } from "../components/ScreenBackground";
+import { AppButton } from "../components/AppButton";
 
 type Props = {
     question: StoredQuestion;
@@ -39,22 +41,24 @@ export function EditQuestionScreen({ question, onSaved, onDeleted, onCancel }: P
     }
 
     return (
-        <ScrollView contentContainerStyle={styles.container}>
-            <Text style={styles.label}>Pitanje:</Text>
-            <TextInput style={styles.input} multiline value={text} onChangeText={setText} />
-            <ImagePickerField label="pitanje" uri={questionImageUri} onChange={setQuestionImageUri} />
+        <ScreenBackground>
+            <ScrollView contentContainerStyle={styles.container}>
+                <Text style={styles.label}>Pitanje:</Text>
+                <TextInput style={styles.input} multiline value={text} onChangeText={setText} />
+                <ImagePickerField label="pitanje" uri={questionImageUri} onChange={setQuestionImageUri} />
 
-            <Text style={styles.label}>Odgovor:</Text>
-            <TextInput style={styles.input} multiline value={answer} onChangeText={setAnswer} />
-            <ImagePickerField label="odgovor" uri={answerImageUri} onChange={setAnswerImageUri} />
+                <Text style={styles.label}>Odgovor:</Text>
+                <TextInput style={styles.input} multiline value={answer} onChangeText={setAnswer} />
+                <ImagePickerField label="odgovor" uri={answerImageUri} onChange={setAnswerImageUri} />
 
 
-            <View style={styles.buttonRow}>
-                <Button title="Otkaži" color="#888" onPress={onCancel} />
-                <Button title="Sačuvaj" onPress={handleSave} />
-            </View>
+                <View style={styles.buttonRow}>
+                    <AppButton title="Otkaži" variant="secondary" onPress={onCancel} />
+                    <AppButton title="Sačuvaj" variant="primary" onPress={handleSave} />
+                </View>
 
-            <Button title="Obriši pitanje" color="#c0392b" onPress={handleDelete} />
-        </ScrollView>
+                <AppButton title="Obriši pitanje" variant="danger" onPress={handleDelete} />
+            </ScrollView>
+        </ScreenBackground>
     );
 }

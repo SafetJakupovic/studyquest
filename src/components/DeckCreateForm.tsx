@@ -1,6 +1,7 @@
 import { View, Text, Button, TextInput } from 'react-native';
 import { styles } from '../styles/styles';
 import { useState } from 'react';
+import { AppButton } from './AppButton';
 
 type Props = {
     onCreate: (name: string) => void;
@@ -26,7 +27,7 @@ export function DeckCreateForm({ onCreate }: Props) {
                 value={newDeckName}
                 onChangeText={setNewDeckName}
             />
-            <Button title="Dodaj špil" onPress={handleCreate} />
+            <AppButton title="Dodaj špil" onPress={handleCreate} />
         </View>
     )
 }

@@ -43,6 +43,28 @@ export type Activity = {
 
 export type ActivityWithStatus = Activity & { doneToday: boolean };
 
+export type QuestionImage = {
+    id: number;
+    questionId: number;
+    side: 'question' | 'answer';
+    uri: string;
+    position: number
+};
+
+export type QuestionWithImages = StoredQuestion & { questionImages: string[]; answerImages: string[] };
+
+export type BackupPayload = {
+    exportedAt: string;
+    version: number;
+    decks: { id: number; name: string; createdAt: string }[];
+    questions: any[];
+    images: { id: number; questionId: number; side: string; uri: string; position: number }[];
+    stats: Stats;
+    activities: Activity[];
+    activityLog: { id: number; activityId: number; date: string }[];
+    readingLog: { date: string; pages: number }[];
+}
+
 const db = SQLite.openDatabaseSync('studyquest.db');
 
 export function initDatabase() {
@@ -154,6 +176,30 @@ export function initDatabase() {
         });
     }
 
+    if (version < 6) {
+        db.withTransactionSync(() => {
+            db.execSync(`
+                CREATE TABLE IF NOT EXISTS question_images (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                questionId INTEGER NOT NULL REFERENCES question(id),
+                side TEXT NOT NULL CHECK(side IN ('question', 'answer')),
+                uri TEXT NOT NULL,
+                position INTEGER NOT NULL DEFAULT 0);`);
+
+            // prebacivanje postojecih pojedinacnih slika u novu tabelu
+            // sqlite ne podrzava valjda pouzdano DROP COLUMN u svim verzijama
+            // pa stare kolone ne prave problem
+            db.execSync(`
+                INSERT INTO question_images (questionId, side, uri, position)
+                SELECT id, 'question', questionImageUri, 0 FROM questions WHERE questionImageUri IS NOT NULL;`);
+            db.execSync(`
+                INSERT INTO question_images (questionId, side, uri, position)
+                SELECT id, 'answer', answerImageUri, 0 FROM questions WHERE answerImageUri IS NOT NULL;`);
+
+            db.execSync('PRAGMA user_version = 6');
+        });
+    }
+
     // ocistio bazu s ovim kad sam pogresan format stavio
     // moze se obrisati, ali neka
     db.runSync(
@@ -186,7 +232,7 @@ export function getDeckStats(): DeckStats[] {
     return db.getAllSync<DeckStats>(
         `SELECT d.id, d.name,
         COUNT(q.id) AS total,
-        COALESCE(SUM(CASE WHEN q.due <= ? THEN 1 ELSE 0 END), 0) AS due
+        COALESCE(SUM(CASE WHEN date(q.due) <= date(?) THEN 1 ELSE 0 END), 0) AS due
         FROM decks d
         LEFT JOIN questions q ON q.deck_id = d.id 
         GROUP BY d.id
@@ -202,23 +248,29 @@ export function createDeck(name: string): number {
     return r.lastInsertRowId;
 }
 
-export function getQuestionById(id: number): StoredQuestion | null {
-    return db.getFirstSync<StoredQuestion>('SELECT * FROM questions WHERE id = ?', [id]);
+export function getQuestionById(id: number): QuestionWithImages | null {
+    const row = db.getFirstSync<StoredQuestion>('SELECT * FROM questions WHERE id = ?', [id]);
+    if (!row) return null;
+    return attachImages([row])[0];
 }
 
 export function insertQuestions(
-    items: { question: string; answer: string; sourceText: string, questionImageUri?: string | null, answerImageUri?: string | null }[],
+    items: {
+        question: string;
+        answer: string;
+        sourceText: string;
+        questionImages?: string[];
+        answerImages?: string[];
+    }[],
     deckId: number
 ) {
-    // sqlite ne zna za JS objekte pa se datimu pretvaraju u string
     const now = new Date().toISOString();
     for (const item of items) {
         const card: Card = createEmptyCard(new Date());
-        db.runSync(
-            /* ide ? da ne ubacujemo tekst direktno u SQL string (tipa "...VALUES ('" + text + "')") jer to otvara SQL injection napade i puca na specijalnim znakovima */
-            `INSERT INTO questions 
-            (question, answer, sourceText, createdAt, due, stability, difficulty, elapsed_days, scheduled_days, learning_steps, reps, lapses, state, last_review, deck_id, questionImageUri, answerImageUri) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        const result = db.runSync(
+            `INSERT INTO questions
+        (question, answer, sourceText, createdAt, due, stability, difficulty, elapsed_days, scheduled_days, learning_steps, reps, lapses, state, last_review, deck_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 item.question,
                 item.answer,
@@ -235,24 +287,30 @@ export function insertQuestions(
                 card.state,
                 card.last_review ? card.last_review.toISOString() : null,
                 deckId,
-                item.questionImageUri ?? null,
-                item.answerImageUri ?? null,
             ]
         );
+        const questionId = result.lastInsertRowId;
+        if (item.questionImages && item.questionImages.length > 0) {
+            setQuestionImages(questionId, 'question', item.questionImages);
+        }
+        if (item.answerImages && item.answerImages.length > 0) {
+            setQuestionImages(questionId, 'answer', item.answerImages);
+        }
     }
 }
+
 
 export function getAllQuestions(): StoredQuestion[] {
     return db.getAllSync<StoredQuestion>('SELECT * FROM questions ORDER BY createdAt DESC');
 }
 
-// pitanja za danas
-export function getDueQuestions(deckId: number): StoredQuestion[] {
+export function getDueQuestions(deckId: number): QuestionWithImages[] {
     const now = new Date().toISOString();
-    return db.getAllSync<StoredQuestion>(
+    const rows = db.getAllSync<StoredQuestion>(
         'SELECT * FROM questions WHERE due <= ? AND deck_id = ? ORDER BY due ASC',
         [now, deckId]
     );
+    return attachImages(rows);
 }
 
 // azuriranje kartice nakon odgovora
@@ -310,17 +368,11 @@ export function applyReviewReward(grade: number): Stats {
     return getStats();
 }
 
-export function getRandomQuestions(count: number, deckId: number | null): StoredQuestion[] {
-    if (deckId == null) {
-        return db.getAllSync<StoredQuestion>(
-            'SELECT * FROM questions ORDER BY RANDOM() LIMIT ?',
-            [count]
-        );
-    }
-    return db.getAllSync<StoredQuestion>(
-        'SELECT * FROM questions WHERE deck_id = ? ORDER BY RANDOM() LIMIT ?',
-        [deckId, count]
-    );
+export function getRandomQuestions(count: number, deckId: number | null): QuestionWithImages[] {
+    const rows = deckId === null
+        ? db.getAllSync<StoredQuestion>('SELECT * FROM questions ORDER BY RANDOM() LIMIT ?', [count])
+        : db.getAllSync<StoredQuestion>('SELECT * FROM questions WHERE deck_id = ? ORDER BY RANDOM() LIMIT ?', [deckId, count]);
+    return attachImages(rows);
 }
 
 export function applyBossFightReward(correctCount: number, totalCount: number): Stats {
@@ -357,14 +409,13 @@ export function updateQuestionContent(id: number, question: string, answer: stri
 }
 
 export function deleteQuestion(id: number) {
+    db.runSync('DELETE FROM question_images WHERE questionId = ?', [id]);
     db.runSync('DELETE FROM questions WHERE id = ?', [id]);
 }
 
-export function getQuestionsByDeck(deckId: number): StoredQuestion[] {
-    return db.getAllSync<StoredQuestion>(
-        'SELECT * FROM questions WHERE deck_id = ? ORDER BY createdAt DESC',
-        [deckId]
-    );
+export function getQuestionsByDeck(deckId: number): QuestionWithImages[] {
+    const rows = db.getAllSync<StoredQuestion>('SELECT * FROM questions WHERE deck_id = ? ORDER BY createdAt DESC', [deckId]);
+    return attachImages(rows);
 }
 
 export function updateQuestionImages(id: number, questionImageUri: string | null, answerImageUri: string | null) {
@@ -440,4 +491,108 @@ export function setTodayPages(newPages: number): Stats {
         db.runSync('UPDATE stats SET xp = xp + ?, coins = coins + ? WHERE id = 1', [deltaUnits, deltaUnits]);
 
     return getStats();
+}
+
+function attachImages(rows: StoredQuestion[]): QuestionWithImages[] {
+    if (rows.length === 0)
+        return [];
+    const ids = rows.map(r => r.id);
+    const placeholders = ids.map(() => '?').join(',');
+    const imgRows = db.getAllSync<QuestionImage>(
+        `SELECT * FROM question_images WHERE questionId IN (${placeholders}) ORDER BY side, position`,
+        ids
+    );
+    return rows.map(r => ({
+        ...r,
+        questionImages: imgRows.filter(i => i.questionId === r.id && i.side === 'question').map(i => i.uri),
+        answerImages: imgRows.filter(i => i.questionId === r.id && i.side === 'answer').map(i => i.uri),
+    }));
+}
+
+export function getImagesForQuestion(questionId: number): { question: string[], answer: string[] } {
+    const rows = db.getAllSync<QuestionImage>(
+        'SELECT * FROM question_images WHERE questionId = ? ORDER BY side, position',
+        [questionId]
+    );
+    return {
+        question: rows.filter(r => r.side === 'question').map(r => r.uri),
+        answer: rows.filter(r => r.side === 'answer').map(r => r.uri)
+    };
+}
+
+export function setQuestionImages(questionId: number, side: 'question' | 'answer', uris: string[]) {
+    db.runSync('DELETE FROM question_images WHERE questionId = ? AND side = ?', [questionId, side]);
+    uris.forEach((uri, index) => {
+        db.runSync('INSERT INTO question_images (questionId, side, uri, position) VALUES (?, ?, ?, ?)', [questionId, side, uri, index]);
+    });
+}
+
+export function exportRawData(): BackupPayload {
+    return {
+        exportedAt: new Date().toISOString(),
+        version: 1,
+        decks: db.getAllSync('SELECT * FROM decks'),
+        questions: db.getAllSync('SELECT * FROM questions'),
+        images: db.getAllSync('SELECT * FROM question_images'),
+        stats: getStats(),
+        activities: db.getAllSync('SELECT * FROM activities'),
+        activityLog: db.getAllSync('SELECT * FROM activity_log'),
+        readingLog: db.getAllSync('SELECT * FROM reading_log'),
+    };
+}
+
+export function importRawData(data: BackupPayload) {
+    db.withTransactionSync(() => {
+        db.execSync('DELETE FROM question_images');
+        db.execSync('DELETE FROM questions');
+        db.execSync('DELETE FROM decks');
+        db.execSync('DELETE FROM activity_log');
+        db.execSync('DELETE FROM activities');
+        db.execSync('DELETE FROM reading_log');
+
+        const deckIdMap = new Map<number, number>();
+        for (const d of data.decks) {
+            const r = db.runSync('INSERT INTO decks (name, createdAt) VALUES (?, ?)', [d.name, d.createdAt]);
+            deckIdMap.set(d.id, r.lastInsertRowId);
+        }
+
+        const activityIdMap = new Map<number, number>();
+        for (const a of data.activities) {
+            const r = db.runSync('INSERT INTO activities (name, xpReward, coinsReward) VALUES (?, ?, ?)', [a.name, a.xpReward, a.coinsReward]);
+            activityIdMap.set(a.id, r.lastInsertRowId);
+        }
+
+        const questionIdMap = new Map<number, number>();
+        for (const q of data.questions) {
+            const newDeckId = q.deck_id !== null && q.deck_id !== undefined ? deckIdMap.get(q.deck_id) ?? null : null;
+            const r = db.runSync(
+                `INSERT INTO questions
+          (question, answer, sourceText, createdAt, due, stability, difficulty, elapsed_days, scheduled_days, learning_steps, reps, lapses, state, last_review, deck_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [q.question, q.answer, q.sourceText, q.createdAt, q.due, q.stability, q.difficulty, q.elapsed_days, q.scheduled_days, q.learning_steps, q.reps, q.lapses, q.state, q.last_review, newDeckId]
+            );
+            questionIdMap.set(q.id, r.lastInsertRowId);
+        }
+
+        for (const img of data.images) {
+            const newQuestionId = questionIdMap.get(img.questionId);
+            if (newQuestionId === undefined) continue;
+            db.runSync('INSERT INTO question_images (questionId, side, uri, position) VALUES (?, ?, ?, ?)', [newQuestionId, img.side, img.uri, img.position ?? 0]);
+        }
+
+        for (const log of data.activityLog) {
+            const newActivityId = activityIdMap.get(log.activityId);
+            if (newActivityId === undefined) continue;
+            db.runSync('INSERT INTO activity_log (activityId, date) VALUES (?, ?)', [newActivityId, log.date]);
+        }
+
+        for (const r of data.readingLog) {
+            db.runSync('INSERT INTO reading_log (date, pages) VALUES (?, ?)', [r.date, r.pages]);
+        }
+
+        db.runSync(
+            'UPDATE stats SET xp = ?, coins = ?, gameBudget = ?, streak = ?, lastStudyDate = ? WHERE id = 1',
+            [data.stats.xp, data.stats.coins, data.stats.gameBudget, data.stats.streak, data.stats.lastStudyDate]
+        );
+    });
 }

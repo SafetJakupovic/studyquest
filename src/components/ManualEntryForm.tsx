@@ -1,54 +1,34 @@
 import { useState } from 'react';
-import { View, Text, TextInput, Button } from 'react-native';
+import { View, Text, TextInput } from 'react-native';
 import { styles } from '../styles/styles';
-import { ImagePickerField } from './ImagePickerField';
+import { ImageListPicker } from './ImageListPicker';
 import { AppButton } from './AppButton';
 
 type Props = {
-    onAdd: (question: string, answer: string, questionImageUri: string | null, answerImageUri: string | null) => void;
+    onAdd: (question: string, answer: string, questionImages: string[], answerImages: string[]) => void;
 };
 
 export function ManualEntryForm({ onAdd }: Props) {
     const [question, setQuestion] = useState('');
     const [answer, setAnswer] = useState('');
-    const [questionImageUri, setQuestionImageUri] = useState<string | null>(null);
-    const [answerImageUri, setAnswerImageUri] = useState<string | null>(null);
+    const [questionImages, setQuestionImages] = useState<string[]>([]);
+    const [answerImages, setAnswerImages] = useState<string[]>([]);
 
     function handleAdd() {
-        if (question.trim() === '' || answer.trim() === '')
-            return;
-        onAdd(question.trim(), answer.trim(), questionImageUri, answerImageUri);
-        setQuestion('');
-        setAnswer('');
-        setQuestionImageUri(null);
-        setAnswerImageUri(null);
+        if (question.trim() === '' || answer.trim() === '') return;
+        onAdd(question.trim(), answer.trim(), questionImages, answerImages);
+        setQuestion(''); setAnswer(''); setQuestionImages([]); setAnswerImages([]);
     }
 
     return (
         <View style={{ width: '100%', marginTop: 15 }}>
             <Text style={styles.label}>Ručno dodaj pitanje:</Text>
-            <TextInput
-                style={styles.input}
-                placeholder="Pitanje..."
-                value={question}
-                onChangeText={setQuestion}
-            />
-            <ImagePickerField
-                label="pitanje"
-                uri={questionImageUri}
-                onChange={setQuestionImageUri}
-            />
-            <TextInput
-                style={styles.input}
-                placeholder="Odgovor..."
-                value={answer}
-                onChangeText={setAnswer}
-            />
-            <ImagePickerField
-                label="odgovor"
-                uri={answerImageUri}
-                onChange={setAnswerImageUri}
-            />
+            <TextInput style={styles.input} placeholder="Pitanje..." value={question} onChangeText={setQuestion} />
+            <ImageListPicker label="pitanje" uris={questionImages} onChange={setQuestionImages} />
+
+            <TextInput style={styles.input} placeholder="Odgovor..." value={answer} onChangeText={setAnswer} />
+            <ImageListPicker label="odgovor" uris={answerImages} onChange={setAnswerImages} />
+
             <AppButton title="Dodaj pitanje" onPress={handleAdd} />
         </View>
     );

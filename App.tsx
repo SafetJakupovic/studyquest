@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { generateQuestions, Question } from './src/api/gemini';
-import { initDatabase, insertQuestions, getAllQuestions, StoredQuestion } from './src/db/database';
+import { initDatabase, insertQuestions, getAllQuestions, StoredQuestion, QuestionWithImages } from './src/db/database';
 import { fsrs, generatorParameters, type Card, type Grade } from 'ts-fsrs';
 import { getDueQuestions, updateCardAfterReview, getQuestionById, DeckStats, getDeckStats, createDeck, getStats, applyReviewReward, Stats } from './src/db/database';
 import { NavigationContainer } from '@react-navigation/native';
@@ -18,6 +18,7 @@ import { Lora_400Regular, Lora_600SemiBold } from '@expo-google-fonts/lora';
 import { View, ActivityIndicator } from 'react-native';
 import { colors, fonts } from './src/styles/theme';
 import { CustomTabBar } from './src/components/CustomTabBar';
+import { SettingsScreen } from './src/screens/SettingsScreen';
 
 const scheduler = fsrs(generatorParameters());
 const SESSION_WINDOW_MS = 20 * 60 * 1000; // pitanja koja su na redu u narednih 20 minuta ostaju u sesiji, da se ne razvlaci puno
@@ -27,6 +28,7 @@ type RootStackParamList = {
   MainTabs: undefined;
   BossFight: undefined;
   ManageDeck: { deckId: number };
+  Settings: undefined;
 }
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -47,7 +49,7 @@ export default function App() {
   const [pendingQueue, setPendingQueue] = useState<Question[]>([]);
   const [pendingSource, setPendingSource] = useState('');
 
-  const [dueQueue, setDueQueue] = useState<StoredQuestion[]>([]);
+  const [dueQueue, setDueQueue] = useState<QuestionWithImages[]>([]);
   const [showAnswer, setShowAnswer] = useState(false);
 
   const [info, setInfo] = useState('');
@@ -161,12 +163,22 @@ export default function App() {
     setText(extractedText);
   }*/
 
-  function handleManualAdd(question: string, answer: string, questionImageUri: string | null, answerImageUri: string | null) {
+  function handleManualAdd(question: string, answer: string, questionImages: string[], answerImages: string[]) {
     if (selectedDeckId === null)
       return;
-    insertQuestions([{ question, answer, sourceText: 'ručni unos', questionImageUri, answerImageUri }], selectedDeckId);
+    insertQuestions([{ question, answer, sourceText: 'ručni unos', questionImages, answerImages }], selectedDeckId);
     setSaved(getAllQuestions());
     refreshDecks();
+  }
+
+  function handleSelectDeck(id: number) {
+    setSelectedDeckId(id);
+    if (dueQueue.length > 0) {
+      const due = getDueQuestions(id);
+      setInfo(due.length === 0 ? 'Nema pitanja za ponavljanje' : '');
+      setDueQueue(due);
+      setShowAnswer(false);
+    }
   }
 
   if (!fontsLoaded) {
@@ -190,7 +202,7 @@ export default function App() {
                   <StudyScreen
                     decks={decks}
                     selectedDeckId={selectedDeckId}
-                    onSelectDeck={setSelectedDeckId}
+                    onSelectDeck={handleSelectDeck}
                     dueQueue={dueQueue}
                     showAnswer={showAnswer}
                     onStartSession={startSession}
@@ -231,7 +243,12 @@ export default function App() {
               </Tab.Screen>
 
               <Tab.Screen name="Nagrade">
-                {() => <RewardsScreen stats={stats} onStatsChange={setStats} />}
+                {({ navigation }) =>
+                  <RewardsScreen
+                    stats={stats}
+                    onStatsChange={setStats}
+                    navigation={navigation}
+                  />}
               </Tab.Screen>
             </Tab.Navigator>
           )}
@@ -256,6 +273,23 @@ export default function App() {
               deckId={route.params.deckId}
               deckName={decks.find(d => d.id === route.params.deckId)?.name ?? ''}
               onExit={() => navigation.goBack()}
+            />
+          )}
+        </Stack.Screen>
+
+        <Stack.Screen name="Settings">
+          {({ navigation }) => (
+            <SettingsScreen
+              onExit={() => navigation.goBack()}
+              onImported={() => {
+                const deckStats = getDeckStats();
+                setDecks(deckStats);
+                setSelectedDeckId(deckStats[0]?.id ?? null);
+                setStats(getStats());
+                setSaved(getAllQuestions());
+                setDueQueue([]);
+                setPendingQueue([]);
+              }}
             />
           )}
         </Stack.Screen>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getQuestionsByDeck, StoredQuestion } from "../db/database";
+import { getQuestionsByDeck, QuestionWithImages, StoredQuestion } from "../db/database";
 import { EditQuestionScreen } from "./EditQuestionScreen";
 import { BackHandler, Button, Image, Pressable, ScrollView, Text } from "react-native";
 import { styles } from "../styles/styles";
@@ -13,7 +13,7 @@ type Props = {
 }
 
 export function ManageDeckScreen({ deckId, deckName, onExit }: Props) {
-    const [questions, setQuestions] = useState<StoredQuestion[]>([]);
+    const [questions, setQuestions] = useState<QuestionWithImages[]>([]);
     const [editing, setEditing] = useState<StoredQuestion | null>(null);
 
     function refresh() {
@@ -56,9 +56,9 @@ export function ManageDeckScreen({ deckId, deckName, onExit }: Props) {
 
                 {questions.map(q => (
                     <Pressable key={q.id} onPress={() => setEditing(q)} style={[styles.card, { flexDirection: 'row', alignItems: 'center' }]}>
-                        {q.questionImageUri && (
+                        {q.questionImages[0] && (
                             <Image
-                                source={{ uri: q.questionImageUri }}
+                                source={{ uri: q.questionImages[0] }}
                                 style={{ width: 48, height: 48, borderRadius: 4, marginRight: 12 }}
                                 resizeMode="cover" />
                         )}

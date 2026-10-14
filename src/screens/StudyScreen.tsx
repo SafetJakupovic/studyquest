@@ -2,7 +2,7 @@ import { View, Text, Button, KeyboardAvoidingView, Platform, ScrollView } from '
 import { styles } from '../styles/styles';
 import { DeckSelector } from '../components/DeckSelector';
 import { QuestionCard } from '../components/QuestionCard';
-import type { DeckStats, StoredQuestion } from '../db/database';
+import type { DeckStats, QuestionWithImages, StoredQuestion } from '../db/database';
 import type { Grade } from 'ts-fsrs';
 import { Rating } from 'ts-fsrs';
 import { useFocusEffect } from '@react-navigation/native';
@@ -14,7 +14,7 @@ type Props = {
     decks: DeckStats[];
     selectedDeckId: number | null;
     onSelectDeck: (id: number) => void;
-    dueQueue: StoredQuestion[];
+    dueQueue: QuestionWithImages[];
     showAnswer: boolean;
     onStartSession: () => void;
     onShowAnswer: () => void;
@@ -61,8 +61,8 @@ export function StudyScreen({
                             <QuestionCard
                                 question={dueQueue[0].question}
                                 answer={showAnswer ? dueQueue[0].answer : undefined}
-                                questionImageUri={dueQueue[0].questionImageUri}
-                                answerImageUri={showAnswer ? dueQueue[0].answerImageUri : undefined}
+                                questionImages={dueQueue[0].questionImages}
+                                answerImages={showAnswer ? dueQueue[0].answerImages : undefined}
                             />
 
                             {!showAnswer ? (

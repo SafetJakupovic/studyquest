@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { applyBossFightReward, getRandomQuestions, Stats, StoredQuestion } from '../db/database';
+import { applyBossFightReward, getRandomQuestions, QuestionWithImages, Stats, StoredQuestion } from '../db/database';
 import { styles } from '../styles/styles';
 import { Button, ScrollView, Text, View } from 'react-native';
 import { QuestionCard } from '../components/QuestionCard';
@@ -16,7 +16,7 @@ type Props = {
 }
 
 export function BossFightScreen({ deckId, onFinish, onExit }: Props) {
-    const [questions, setQuestions] = useState<StoredQuestion[]>([]);
+    const [questions, setQuestions] = useState<QuestionWithImages[]>([]);
     const [index, setIndex] = useState(0);
     const [showAnswer, setShowAnswer] = useState(false);
     const [correctCount, setCorrectCount] = useState(0);
@@ -90,7 +90,12 @@ export function BossFightScreen({ deckId, onFinish, onExit }: Props) {
                 <Text style={{ fontSize: 18, fontWeight: 'bold', color: timeLeft <= 10 ? 'red' : '#333' }}>{timeLeft}s</Text>
                 <Text style={styles.counter}>Pitanje {index + 1} / {questions.length}</Text>
 
-                <QuestionCard question={current.question} answer={showAnswer ? current.answer : undefined} />
+                <QuestionCard
+                    question={current.question}
+                    answer={showAnswer ? current.answer : undefined}
+                    questionImages={current.questionImages}
+                    answerImages={showAnswer ? current.answerImages : undefined}
+                />
 
                 {!showAnswer ? (
                     <AppButton title="Prikaži odgovor" onPress={() => setShowAnswer(true)} />

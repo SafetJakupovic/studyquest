@@ -2,13 +2,14 @@ import { View, Text, Button, KeyboardAvoidingView, Platform, ScrollView } from '
 import { styles } from '../styles/styles';
 import { DeckSelector } from '../components/DeckSelector';
 import { QuestionCard } from '../components/QuestionCard';
-import type { DeckStats, QuestionWithImages, StoredQuestion } from '../db/database';
+import { LEECH_THRESHOLD, Stats, type DeckStats, type QuestionWithImages, type StoredQuestion } from '../db/database';
 import type { Grade } from 'ts-fsrs';
 import { Rating } from 'ts-fsrs';
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback } from 'react';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { AppButton } from '../components/AppButton';
+import { colors, fonts } from '../styles/theme';
 
 type Props = {
     decks: DeckStats[];
@@ -22,10 +23,13 @@ type Props = {
     info: string;
     navigation: any;
     onFocus: () => void;
+    todaySummary: { totalDue: number; deckCount: number };
+    stats: Stats;
+    leechCount: number;
 };
 
 export function StudyScreen({
-    decks, selectedDeckId, onSelectDeck, dueQueue, showAnswer, onStartSession, onShowAnswer, onRate, info, navigation, onFocus }: Props) {
+    decks, selectedDeckId, onSelectDeck, dueQueue, showAnswer, onStartSession, onShowAnswer, onRate, info, navigation, onFocus, todaySummary, stats, leechCount }: Props) {
     useFocusEffect(
         useCallback(() => {
             onFocus();
@@ -43,11 +47,32 @@ export function StudyScreen({
 
                     <View style={styles.divider} />
 
-                    <AppButton
-                        title="Boss Fight"
-                        variant="secondary"
-                        onPress={() => navigation.navigate('BossFight')}
-                    />
+                    {leechCount > 0 && (
+                        <Text style={{ fontFamily: fonts.body, fontSize: 13, color: colors.wine, marginBottom: 8 }}>
+                            ⚠️ {leechCount} {leechCount === 1 ? 'kartica čeka' : 'kartica čekaju'} van rotacije — pogledaj u "Uredi kartice"
+                        </Text>
+                    )}
+
+                    {todaySummary.totalDue > 0 && (
+                        <Text style={[styles.counter, { fontFamily: fonts.bodySemiBold, color: colors.gold }]}>
+                            Danas: {todaySummary.totalDue} pitanja kroz {todaySummary.deckCount} {todaySummary.deckCount === 1 ? 'špil' : 'špila'}
+                        </Text>
+                    )}
+
+                    <View style={styles.chipRow}>
+                        <AppButton
+                            title="Boss Fight"
+                            variant="secondary"
+                            onPress={() => navigation.navigate('BossFight')}
+                        />
+
+                        <AppButton
+                            title="Pregled gradiva"
+                            variant="ghost"
+                            onPress={() => navigation.navigate('SkeletonReview', { deckId: selectedDeckId })}
+                        />
+                    </View>
+
 
                     {dueQueue.length === 0 && (
                         <AppButton title="Pokreni dnevnu sesiju" onPress={onStartSession} />
@@ -63,6 +88,8 @@ export function StudyScreen({
                                 answer={showAnswer ? dueQueue[0].answer : undefined}
                                 questionImages={dueQueue[0].questionImages}
                                 answerImages={showAnswer ? dueQueue[0].answerImages : undefined}
+                                cardType={dueQueue[0].cardType}
+                                isLeech={dueQueue[0].consecutiveFails >= stats.leechThreshold}
                             />
 
                             {!showAnswer ? (

@@ -4,6 +4,18 @@ import { createEmptyCard, type Card } from 'ts-fsrs';
 export const COINS_PER_MINUTE = 1;
 export const COINS_PER_KM = 100;
 export const PAGES_PER_REWARD_UNIT = 1; // 1 coin za jednu stranicu
+export const LEECH_THRESHOLD = 6;
+
+export type Stats = {
+    id: number;
+    xp: number;
+    coins: number;
+    gameBudget: number;
+    streak: number;
+    lastStudyDate: string | null;
+    maxNewCardsPerDay: number;
+    leechThreshold: number;
+};
 
 export type DeckStats = {
     id: number;
@@ -32,6 +44,8 @@ export type StoredQuestion = {
     deck_id: number | null;
     questionImageUri: string | null;
     answerImageUri: string | null;
+    cardType: string | null;
+    consecutiveFails: number;
 };
 
 export type Activity = {
@@ -200,11 +214,64 @@ export function initDatabase() {
         });
     }
 
+    // alter table add column prosao prije pragma user_version = 7 izgleda pa sam morao malo drugacije
+    if (version < 7) {
+        db.withTransactionSync(() => {
+            const columns = db.getAllSync<{ name: string }>('PRAGMA table_info(stats)');
+            const hasColumn = columns.some(c => c.name === 'maxNewCardsPerDay');
+
+            if (!hasColumn) {
+                db.execSync('ALTER TABLE stats ADD COLUMN maxNewCardsPerDay INTEGER NOT NULL DEFAULT 20;');
+
+            }
+
+            db.execSync(`
+                CREATE TABLE IF NOT EXISTS new_cards_log (
+                    date TEXT NOT NULL,
+                    deckId INTEGER NOT NULL REFERENCES decks(id),
+                    count INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (date, deckId));`);
+            db.execSync('PRAGMA user_version = 7');
+        });
+    }
+
+    // ko se opece na mlijeko...
+    if (version < 8) {
+        db.withTransactionSync(() => {
+            const columns = db.getAllSync<{ name: string }>('PRAGMA table_info(questions)');
+            const hasColumn = columns.some(c => c.name === 'cardType');
+            if (!hasColumn)
+                db.execSync('ALTER TABLE questions ADD COLUMN cardType TEXT;');
+            db.execSync('PRAGMA user_version = 8');
+        });
+    }
+
+    if (version < 9) {
+        db.withTransactionSync(() => {
+            const columns = db.getAllSync<{ name: string }>('PRAGMA table_info(questions)');
+            const hasColumn = columns.some(c => c.name === 'consecutiveFails');
+            if (!hasColumn)
+                db.execSync('ALTER TABLE questions ADD COLUMN consecutiveFails INTEGER NOT NULL DEFAULT 0;');
+            db.execSync('PRAGMA user_version = 9');
+        });
+    }
+
+    if (version < 10) {
+        db.withTransactionSync(() => {
+            const columns = db.getAllSync<{ name: string }>('PRAGMA table_info(stats)');
+            const hasColumn = columns.some(c => c.name === 'leechThreshold');
+            if (!hasColumn) {
+                db.execSync('ALTER TABLE stats ADD COLUMN leechThreshold INTEGER NOT NULL DEFAULT 6;');
+            }
+            db.execSync('PRAGMA user_version = 10');
+        })
+    }
+
     // ocistio bazu s ovim kad sam pogresan format stavio
     // moze se obrisati, ali neka
-    db.runSync(
+    /*db.runSync(
         "UPDATE questions SET last_review = NULL WHERE last_review IS NOT NULL AND last_review NOT LIKE '____-__-__T%'"
-    );
+    );*/
 }
 
 export function exchangeCoinsForMinutes(minutes: number): Stats {
@@ -261,6 +328,7 @@ export function insertQuestions(
         sourceText: string;
         questionImages?: string[];
         answerImages?: string[];
+        cardType?: string | null;
     }[],
     deckId: number
 ) {
@@ -269,8 +337,8 @@ export function insertQuestions(
         const card: Card = createEmptyCard(new Date());
         const result = db.runSync(
             `INSERT INTO questions
-        (question, answer, sourceText, createdAt, due, stability, difficulty, elapsed_days, scheduled_days, learning_steps, reps, lapses, state, last_review, deck_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (question, answer, sourceText, createdAt, due, stability, difficulty, elapsed_days, scheduled_days, learning_steps, reps, lapses, state, last_review, deck_id, cardType)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 item.question,
                 item.answer,
@@ -287,6 +355,7 @@ export function insertQuestions(
                 card.state,
                 card.last_review ? card.last_review.toISOString() : null,
                 deckId,
+                item.cardType ?? null,
             ]
         );
         const questionId = result.lastInsertRowId;
@@ -299,18 +368,34 @@ export function insertQuestions(
     }
 }
 
-
 export function getAllQuestions(): StoredQuestion[] {
     return db.getAllSync<StoredQuestion>('SELECT * FROM questions ORDER BY createdAt DESC');
 }
 
-export function getDueQuestions(deckId: number): QuestionWithImages[] {
+export function getDueQuestions(deckId: number, dryRun: boolean = false): QuestionWithImages[] {
     const now = new Date().toISOString();
-    const rows = db.getAllSync<StoredQuestion>(
-        'SELECT * FROM questions WHERE due <= ? AND deck_id = ? ORDER BY due ASC',
-        [now, deckId]
+    const stats = getStats();
+
+    const reviewing = db.getAllSync<StoredQuestion>(
+        'SELECT * FROM questions WHERE due <= ? AND deck_id = ? AND state != 0 AND consecutiveFails < ? ORDER BY due ASC',
+        [now, deckId, stats.leechThreshold]
     );
-    return attachImages(rows);
+
+    const alreadyShownToday = getNewCardsShownToday(deckId);
+    const remainingNewSlots = Math.max(0, stats.maxNewCardsPerDay - alreadyShownToday);
+
+    const newCards = remainingNewSlots > 0
+        ? db.getAllSync<StoredQuestion>(
+            'SELECT * FROM questions WHERE due <= ? AND deck_id = ? AND state = 0 ORDER BY due ASC LIMIT ?',
+            [now, deckId, remainingNewSlots]
+        )
+        : [];
+
+    if (!dryRun && newCards.length > 0) {
+        registerNewCardsShown(deckId, newCards.length);
+    }
+
+    return attachImages([...reviewing, ...newCards]);
 }
 
 // azuriranje kartice nakon odgovora
@@ -334,15 +419,6 @@ export function updateCardAfterReview(id: number, card: Card) {
         ]
     );
 }
-
-export type Stats = {
-    id: number;
-    xp: number;
-    coins: number;
-    gameBudget: number;
-    streak: number;
-    lastStudyDate: string | null;
-};
 
 export function getStats(): Stats {
     return db.getFirstSync<Stats>('SELECT * FROM stats WHERE id = 1')!; // ! NIJE null
@@ -567,11 +643,14 @@ export function importRawData(data: BackupPayload) {
             const newDeckId = q.deck_id !== null && q.deck_id !== undefined ? deckIdMap.get(q.deck_id) ?? null : null;
             const r = db.runSync(
                 `INSERT INTO questions
-          (question, answer, sourceText, createdAt, due, stability, difficulty, elapsed_days, scheduled_days, learning_steps, reps, lapses, state, last_review, deck_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [q.question, q.answer, q.sourceText, q.createdAt, q.due, q.stability, q.difficulty, q.elapsed_days, q.scheduled_days, q.learning_steps, q.reps, q.lapses, q.state, q.last_review, newDeckId]
-            );
-            questionIdMap.set(q.id, r.lastInsertRowId);
+                (question, answer, sourceText, createdAt, due, stability, difficulty, elapsed_days, scheduled_days, learning_steps, reps, lapses, state, last_review, deck_id, cardType, consecutiveFails)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    q.question, q.answer, q.sourceText, q.createdAt, q.due, q.stability, q.difficulty,
+                    q.elapsed_days, q.scheduled_days, q.learning_steps, q.reps, q.lapses, q.state, q.last_review,
+                    newDeckId, q.cardType ?? null, q.consecutiveFails ?? 0,
+                ]
+            ); questionIdMap.set(q.id, r.lastInsertRowId);
         }
 
         for (const img of data.images) {
@@ -591,8 +670,90 @@ export function importRawData(data: BackupPayload) {
         }
 
         db.runSync(
-            'UPDATE stats SET xp = ?, coins = ?, gameBudget = ?, streak = ?, lastStudyDate = ? WHERE id = 1',
-            [data.stats.xp, data.stats.coins, data.stats.gameBudget, data.stats.streak, data.stats.lastStudyDate]
+            'UPDATE stats SET xp = ?, coins = ?, gameBudget = ?, streak = ?, lastStudyDate = ?, maxNewCardsPerDay = ?, leechThreshold = ? WHERE id = 1',
+            [data.stats.xp, data.stats.coins, data.stats.gameBudget, data.stats.streak, data.stats.lastStudyDate, data.stats.maxNewCardsPerDay, data.stats.leechThreshold]
         );
     });
+}
+
+export function setMaxNewCardsPerDay(value: number): Stats {
+    db.runSync('UPDATE stats SET maxNewCardsPerDay = ? WHERE id = 1', [Math.max(0, value)]);
+    return getStats();
+}
+
+function getNewCardsShownToday(deckId: number): number {
+    const today = new Date().toISOString().slice(0, 10);
+    const row = db.getFirstSync<{ count: number }>(
+        'SELECT count FROM new_cards_log WHERE date = ? AND deckId = ?',
+        [today, deckId]
+    );
+    return row?.count ?? 0;
+}
+
+function registerNewCardsShown(deckId: number, additionalCount: number) {
+    if (additionalCount <= 0)
+        return;
+    const today = new Date().toISOString().slice(0, 10);
+    db.runSync(`INSERT INTO new_cards_log (date, deckId, count) VALUES (?, ?, ?)
+        ON CONFLICT(date, deckId) DO UPDATE SET count = count + ?`,
+        [today, deckId, additionalCount, additionalCount]);
+}
+
+export function getTodaySummary(): { totalDue: number; deckCount: number } {
+    const decks = db.getAllSync<{ id: number }>('SELECT id FROM decks');
+    let totalDue = 0;
+    let deckCount = 0;
+
+    for (const d of decks) {
+        const count = getDueQuestions(d.id, true).length;
+        if (count > 0) {
+            totalDue += count;
+            deckCount += 1;
+        }
+    }
+
+    return { totalDue, deckCount };
+
+}
+
+export function updateLeechTracking(id: number, wasAgain: boolean) {
+    if (wasAgain)
+        db.runSync('UPDATE questions SET consecutiveFails = consecutiveFails + 1 WHERE id = ?', [id]);
+    else
+        db.runSync('UPDATE questions SET consecutiveFails = 0 WHERE id = ?', [id]);
+}
+
+export function resetLeech(id: number) {
+    db.runSync('UPDATE questions SET consecutiveFails = 0 WHERE id = ?', [id]);
+}
+
+export function getLeechQuestions(deckId: number): QuestionWithImages[] {
+    const stats = getStats();
+    const rows = db.getAllSync<StoredQuestion>(
+        'SELECT * FROM questions WHERE deck_id = ? AND consecutiveFails >= ? ORDER BY consecutiveFails DESC',
+        [deckId, stats.leechThreshold]
+    );
+    return attachImages(rows);
+}
+
+export function getSkeletonQuestions(deckId: number): QuestionWithImages[] {
+    const rows = db.getAllSync<StoredQuestion>(
+        'SELECT * FROM questions WHERE deck_id = ? AND cardType = ? ORDER BY createdAt ASC',
+        [deckId, 'skeleton']
+    );
+    return attachImages(rows);
+}
+
+export function setLeechThreshold(value: number): Stats {
+    db.runSync('UPDATE stats SET leechThreshold = ? WHERE id = 1', [Math.max(1, value)]);
+    return getStats();
+}
+
+export function getLeechCount(deckId: number): number {
+    const stats = getStats();
+    const row = db.getFirstSync<{ count: number }>(
+        'SELECT COUNT(*) as count FROM questions WHERE deck_id = ? AND consecutiveFails >= ?',
+        [deckId, stats.leechThreshold]
+    );
+    return row?.count ?? 0;
 }

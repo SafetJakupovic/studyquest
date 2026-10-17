@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { generateQuestions, Question } from './src/api/gemini';
-import { initDatabase, insertQuestions, getAllQuestions, StoredQuestion, QuestionWithImages } from './src/db/database';
-import { fsrs, generatorParameters, type Card, type Grade } from 'ts-fsrs';
+import { initDatabase, insertQuestions, getAllQuestions, StoredQuestion, QuestionWithImages, getTodaySummary, updateLeechTracking, getLeechCount } from './src/db/database';
+import { fsrs, generatorParameters, Rating, type Card, type Grade } from 'ts-fsrs';
 import { getDueQuestions, updateCardAfterReview, getQuestionById, DeckStats, getDeckStats, createDeck, getStats, applyReviewReward, Stats } from './src/db/database';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -15,10 +15,14 @@ import { ManageDeckScreen } from './src/screens/ManageDeckScreen';
 import { ActivityScreen } from './src/screens/ActivityScreen';
 import { useFonts, PlayfairDisplay_400Regular, PlayfairDisplay_700Bold } from '@expo-google-fonts/playfair-display';
 import { Lora_400Regular, Lora_600SemiBold } from '@expo-google-fonts/lora';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, Platform } from 'react-native';
 import { colors, fonts } from './src/styles/theme';
 import { CustomTabBar } from './src/components/CustomTabBar';
 import { SettingsScreen } from './src/screens/SettingsScreen';
+import * as NavigationBar from 'expo-navigation-bar';
+import { runAutoBackupIfNeeded } from './src/utils/autoBackup';
+import { ErrorBoundary } from './src/components/ErrorBoundary';
+import { SkeletonReviewScreen } from './src/screens/SkeletonReviewScreen';
 
 const scheduler = fsrs(generatorParameters());
 const SESSION_WINDOW_MS = 20 * 60 * 1000; // pitanja koja su na redu u narednih 20 minuta ostaju u sesiji, da se ne razvlaci puno
@@ -29,6 +33,7 @@ type RootStackParamList = {
   BossFight: undefined;
   ManageDeck: { deckId: number };
   Settings: undefined;
+  SkeletonReview: { deckId: number };
 }
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -59,6 +64,10 @@ export default function App() {
 
   const [stats, setStats] = useState<Stats | null>(null);
 
+  const [todaySummary, setTodaySummary] = useState({ totalDue: 0, deckCount: 0 });
+
+  const [leechCount, setLeechCount] = useState(0);
+
   useEffect(() => {
     initDatabase();
     const stats = getDeckStats();
@@ -66,11 +75,25 @@ export default function App() {
     setSelectedDeckId(stats[0]?.id ?? null);
     setStats(getStats());
     setSaved(getAllQuestions());
+    runAutoBackupIfNeeded().catch(() => { });
+    setTodaySummary(getTodaySummary());
   }, []);
   // [] znaci samo jednom pokrenuti, ne pri svakom re-renderu
 
+  useEffect(() => {
+    if ('setStyle' in NavigationBar && typeof (NavigationBar as any).setStyle === 'function')
+      (NavigationBar as any).setStyle('light');
+  }, []);
+
+  useEffect(() => {
+    if (selectedDeckId !== null) {
+      setLeechCount(getLeechCount(selectedDeckId));
+    }
+  }, [selectedDeckId, decks]);
+
   const refreshDecks = useCallback(() => {
     setDecks(getDeckStats());
+    setTodaySummary(getTodaySummary());
   }, []);
 
 
@@ -112,6 +135,7 @@ export default function App() {
 
     const result = scheduler.next(cardBefore, new Date(), grade);
     updateCardAfterReview(current.id, result.card);
+    updateLeechTracking(current.id, grade == Rating.Again);
     const dueSoon = result.card.due.getTime() - Date.now() <= SESSION_WINDOW_MS;
 
     if (!dueSoon) {
@@ -130,11 +154,11 @@ export default function App() {
     setShowAnswer(false);
   }
 
-  async function handleSubmit() {
+  async function handleSubmit(instruction?: string, withCardType?: boolean) {
     setLoading(true);
     setError('');
     try {
-      const result = await generateQuestions(text);
+      const result = await generateQuestions(text, instruction, withCardType);
       setPendingQueue(result);
       setPendingSource(text);
     } catch (e: any) {
@@ -148,7 +172,7 @@ export default function App() {
     if (selectedDeckId === null) return;
     const current = pendingQueue[0];
     // i dalje se salje niz, samo ce imati jedan element jer se pitanja cuvaju pojedinacno kako se prihvataju
-    insertQuestions([{ ...current, sourceText: pendingSource }], selectedDeckId);
+    insertQuestions([{ ...current, sourceText: pendingSource, cardType: current.type ?? null }], selectedDeckId);
     setSaved(getAllQuestions());
     // koristi se umjesto setPendingQueue(pendingQueue.slice(1)) jer je sigurnije kad se state mijenja na osnovu prethodne vrijednosti
     refreshDecks();
@@ -189,111 +213,134 @@ export default function App() {
     );
   }
   return (
-    <NavigationContainer>
-      <StatusBar style="auto" />
-      <Stack.Navigator screenOptions={{ headerShown: false, presentation: 'fullScreenModal' }}>
-        <Stack.Screen name="MainTabs">
-          {() => (
-            <Tab.Navigator
-              tabBar={(props) => <CustomTabBar {...props} />}
-              screenOptions={{ headerShown: false }}>
-              <Tab.Screen name="Učenje">
-                {({ navigation }) => (
-                  <StudyScreen
-                    decks={decks}
-                    selectedDeckId={selectedDeckId}
-                    onSelectDeck={handleSelectDeck}
-                    dueQueue={dueQueue}
-                    showAnswer={showAnswer}
-                    onStartSession={startSession}
-                    onShowAnswer={() => setShowAnswer(true)}
-                    onRate={handleRate}
-                    info={info}
-                    navigation={navigation}
-                    onFocus={refreshDecks}
-                  />
-                )}
-              </Tab.Screen>
+    <ErrorBoundary>
+      <NavigationContainer>
+        <StatusBar style="auto" />
+        <Stack.Navigator
+          screenOptions={{
+            headerShown: false,
+            presentation: 'fullScreenModal',
+            contentStyle: { backgroundColor: colors.bg }
+          }}>
+          <Stack.Screen name="MainTabs">
+            {() => (
+              <Tab.Navigator
+                tabBar={(props) => <CustomTabBar {...props} />}
+                screenOptions={{ headerShown: false }}>
+                <Tab.Screen name="Učenje">
+                  {({ navigation }) => (
+                    <StudyScreen
+                      decks={decks}
+                      selectedDeckId={selectedDeckId}
+                      onSelectDeck={handleSelectDeck}
+                      dueQueue={dueQueue}
+                      showAnswer={showAnswer}
+                      onStartSession={startSession}
+                      onShowAnswer={() => setShowAnswer(true)}
+                      onRate={handleRate}
+                      info={info}
+                      navigation={navigation}
+                      onFocus={refreshDecks}
+                      todaySummary={todaySummary}
+                      stats={stats!}
+                      leechCount={leechCount}
+                    />
+                  )}
+                </Tab.Screen>
 
-              <Tab.Screen name="Aktivnost">
-                {() => <ActivityScreen stats={stats} onStatsChange={setStats} />}
-              </Tab.Screen>
+                <Tab.Screen name="Aktivnost">
+                  {() => <ActivityScreen stats={stats} onStatsChange={setStats} />}
+                </Tab.Screen>
 
-              <Tab.Screen name="Dodaj">
-                {({ navigation }) => (
-                  <AddScreen
-                    text={text}
-                    onChangeText={setText}
-                    onSubmit={handleSubmit}
-                    loading={loading}
-                    error={error}
-                    saved={saved.length}
-                    deckName={decks.find(d => d.id === selectedDeckId)?.name}
-                    pendingQueue={pendingQueue}
-                    onAccept={handleAccept}
-                    onReject={handleReject}
-                    onManualAdd={handleManualAdd}
-                    onCreateDeck={handleCreateDeck}
-                    selectedDeckId={selectedDeckId}
-                    navigation={navigation}
-                    decks={decks}
-                    onSelectDeck={setSelectedDeckId}
-                  />
-                )}
-              </Tab.Screen>
+                <Tab.Screen name="Dodaj">
+                  {({ navigation }) => (
+                    <AddScreen
+                      text={text}
+                      onChangeText={setText}
+                      onSubmit={handleSubmit}
+                      loading={loading}
+                      error={error}
+                      saved={saved.length}
+                      deckName={decks.find(d => d.id === selectedDeckId)?.name}
+                      pendingQueue={pendingQueue}
+                      onAccept={handleAccept}
+                      onReject={handleReject}
+                      onManualAdd={handleManualAdd}
+                      onCreateDeck={handleCreateDeck}
+                      selectedDeckId={selectedDeckId}
+                      navigation={navigation}
+                      decks={decks}
+                      onSelectDeck={setSelectedDeckId}
+                    />
+                  )}
+                </Tab.Screen>
 
-              <Tab.Screen name="Nagrade">
-                {({ navigation }) =>
-                  <RewardsScreen
-                    stats={stats}
-                    onStatsChange={setStats}
-                    navigation={navigation}
-                  />}
-              </Tab.Screen>
-            </Tab.Navigator>
-          )}
-        </Stack.Screen>
+                <Tab.Screen name="Nagrade">
+                  {({ navigation }) =>
+                    <RewardsScreen
+                      stats={stats}
+                      onStatsChange={setStats}
+                      navigation={navigation}
+                    />}
+                </Tab.Screen>
+              </Tab.Navigator>
+            )}
+          </Stack.Screen>
 
-        <Stack.Screen name="BossFight">
-          {({ navigation }) => (
-            <BossFightScreen
-              deckId={selectedDeckId}
-              onExit={() => navigation.goBack()}
-              onFinish={(newStats) => {
-                setStats(newStats);
-                navigation.goBack();
-              }}
-            />
-          )}
-        </Stack.Screen>
+          <Stack.Screen name="BossFight">
+            {({ navigation }) => (
+              <BossFightScreen
+                deckId={selectedDeckId}
+                onExit={() => navigation.goBack()}
+                onFinish={(newStats) => {
+                  setStats(newStats);
+                  navigation.goBack();
+                }}
+              />
+            )}
+          </Stack.Screen>
 
-        <Stack.Screen name="ManageDeck">
-          {({ navigation, route }) => (
-            <ManageDeckScreen
-              deckId={route.params.deckId}
-              deckName={decks.find(d => d.id === route.params.deckId)?.name ?? ''}
-              onExit={() => navigation.goBack()}
-            />
-          )}
-        </Stack.Screen>
+          <Stack.Screen name="ManageDeck">
+            {({ navigation, route }) => (
+              <ManageDeckScreen
+                deckId={route.params.deckId}
+                deckName={decks.find(d => d.id === route.params.deckId)?.name ?? ''}
+                stats={stats!}
+                onExit={() => navigation.goBack()}
+              />
+            )}
+          </Stack.Screen>
 
-        <Stack.Screen name="Settings">
-          {({ navigation }) => (
-            <SettingsScreen
-              onExit={() => navigation.goBack()}
-              onImported={() => {
-                const deckStats = getDeckStats();
-                setDecks(deckStats);
-                setSelectedDeckId(deckStats[0]?.id ?? null);
-                setStats(getStats());
-                setSaved(getAllQuestions());
-                setDueQueue([]);
-                setPendingQueue([]);
-              }}
-            />
-          )}
-        </Stack.Screen>
-      </Stack.Navigator>
-    </NavigationContainer>
+          <Stack.Screen name="Settings">
+            {({ navigation }) => (
+              <SettingsScreen
+                stats={stats}
+                onStatsChange={setStats}
+                onExit={() => navigation.goBack()}
+                onImported={() => {
+                  const deckStats = getDeckStats();
+                  setDecks(deckStats);
+                  setSelectedDeckId(deckStats[0]?.id ?? null);
+                  setStats(getStats());
+                  setSaved(getAllQuestions());
+                  setDueQueue([]);
+                  setPendingQueue([]);
+                }}
+              />
+            )}
+          </Stack.Screen>
+
+          <Stack.Screen name="SkeletonReview">
+            {({ navigation, route }) => (
+              <SkeletonReviewScreen
+                deckId={route.params.deckId}
+                deckName={decks.find(d => d.id === route.params.deckId)?.name ?? ''}
+                onExit={() => navigation.goBack()}
+              />
+            )}
+          </Stack.Screen>
+        </Stack.Navigator>
+      </NavigationContainer>
+    </ErrorBoundary>
   )
 }

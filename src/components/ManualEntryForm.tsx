@@ -23,6 +23,7 @@ export function ManualEntryForm({ onAdd }: Props) {
     return (
         <View style={{ width: '100%', marginTop: 15 }}>
             <Text style={styles.label}>Ručno dodaj pitanje:</Text>
+            <Text style={styles.counter}>Ubaci "{'{{slika}}'}" gdje želiš sliku (redom kako dodaješ slike ispod)</Text>
             <TextInput style={styles.input} placeholder="Pitanje..." value={question} onChangeText={setQuestion} />
             <ImageListPicker label="pitanje" uris={questionImages} onChange={setQuestionImages} />
 

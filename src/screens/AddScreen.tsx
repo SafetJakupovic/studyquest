@@ -1,7 +1,7 @@
-import { View, Text, Button, TextInput, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, Button, TextInput, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
 import { styles } from '../styles/styles';
 import { QuestionCard } from '../components/QuestionCard';
-import type { Question } from '../api/gemini';
+import { DEFAULT_INSTRUCTION, SKELETON_DETAIL_INSTRUCTION, type Question } from '../api/gemini';
 import { ManualEntryForm } from '../components/ManualEntryForm';
 import { DeckCreateForm } from '../components/DeckCreateForm';
 import { useState } from 'react';
@@ -12,12 +12,10 @@ import { DeckStats } from '../db/database';
 import { DeckSelector } from '../components/DeckSelector';
 //import { pickAndReadPdf } from '../utils/pdfReader';
 
-type Section = 'generate' | 'manual' | 'manage';
-
 type Props = {
     text: string;
     onChangeText: (t: string) => void;
-    onSubmit: () => void;
+    onSubmit: (instruction?: string, withCardType?: boolean) => void;
     loading: boolean;
     error: string;
     saved: number;
@@ -33,9 +31,24 @@ type Props = {
     onSelectDeck: (id: number) => void;
 };
 
+const PROMPT_PRESETS: { label: string; instruction: string; withCardType?: boolean }[] = [
+    { label: 'Standardno', instruction: DEFAULT_INSTRUCTION },
+    { label: 'Trag koda', instruction: 'Na osnovu sljedećeg teksta (koji sadrži isječke koda), napravi 5 pitanja gdje korisnik treba da predvidi tačan izlaz ili ponašanje koda. Svako pitanje treba imati kratak, jasan odgovor.' },
+    { label: 'Definicije', instruction: 'Na osnovu sljedećeg teksta, napravi 5 pitanja koja traže preciznu definiciju ključnih pojmova. Svako pitanje treba imati kratak, jasan odgovor.' },
+    { label: 'Poređenje', instruction: 'Na osnovu sljedećeg teksta, napravi 5 pitanja koja traže poređenje ili razliku između dva povezana pojma. Svako pitanje treba imati kratak, jasan odgovor.' },
+    { label: 'Primjena', instruction: 'Na osnovu sljedećeg teksta, napravi 5 pitanja koja traže primjenu koncepta na nov primjer ili scenario, ne samo ponavljanje definicije. Svako pitanje treba imati kratak, jasan odgovor.' },
+    { label: 'Skelet + detalji', instruction: SKELETON_DETAIL_INSTRUCTION, withCardType: true },
+];
+
+type Section = 'manual' | 'generate' | 'manage';
+const SECTION_ORDER: Section[] = ['manual', 'generate', 'manage'];
+const SECTION_LABELS: Record<Section, string> = { manual: 'Ručno', generate: 'Generiši', manage: 'Uredi kartice' };
+
 export function AddScreen({
     text, onChangeText, onSubmit, loading, error, saved, deckName, pendingQueue, onAccept, onReject, onManualAdd, onCreateDeck, selectedDeckId, navigation, decks, onSelectDeck }: Props) {
-    const [section, setSection] = useState<Section>('generate');
+    const [section, setSection] = useState<Section>('manual');
+    const [instruction, setInstruction] = useState(DEFAULT_INSTRUCTION);
+    const [withCardType, setWithCardType] = useState(false);
     const currentQuestion = pendingQueue[0];
     const activeSection = currentQuestion ? 'generate' : section;
 
@@ -53,10 +66,10 @@ export function AddScreen({
         <ScreenBackground>
             <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
                 <View style={styles.chipRow}>
-                    {(['generate', 'manual', 'manage'] as Section[]).map(s => (
+                    {SECTION_ORDER.map(s => (
                         <AppButton
                             key={s}
-                            title={s === 'generate' ? 'Generiši' : s === 'manual' ? 'Ručno' : 'Uredi kartice'}
+                            title={SECTION_LABELS[s]}
                             variant={activeSection === s ? 'primary' : 'secondary'}
                             onPress={() => setSection(s)}
                             disabled={!!currentQuestion && s !== 'generate'}
@@ -70,7 +83,26 @@ export function AddScreen({
 
                 {activeSection === 'generate' && !currentQuestion && (
                     <>
-                        <Text style={styles.sectionTitle}>Novo gradivo</Text>
+                        <Text style={styles.label}>Vrsta pitanja:</Text>
+                        <View style={localStyles.presetGrid}>
+                            {PROMPT_PRESETS.map(p => (
+                                <View key={p.label} style={localStyles.presetItem}>
+                                    <AppButton
+                                        title={p.label}
+                                        variant={instruction === p.instruction ? 'primary' : 'secondary'}
+                                        onPress={() => { setInstruction(p.instruction); setWithCardType(!!p.withCardType); }}
+                                    />
+                                </View>
+                            ))}
+                        </View>
+
+                        <Text style={styles.label}>Uputstvo za generisanje (možeš izmijeniti):</Text>
+                        <TextInput
+                            style={[styles.input, { minHeight: 70, textAlignVertical: 'top' }]}
+                            multiline
+                            value={instruction}
+                            onChangeText={setInstruction}
+                        />
                         <Text style={styles.label}>Unesi tekst:</Text>
                         <TextInput
                             style={[styles.input, { minHeight: 100, textAlignVertical: 'top' }]}
@@ -80,7 +112,7 @@ export function AddScreen({
                             value={text}
                             onChangeText={onChangeText}
                         />
-                        <AppButton title="Generiši pitanja" onPress={onSubmit} disabled={loading} />
+                        <AppButton title="Generiši pitanja" onPress={() => onSubmit(instruction, withCardType)} disabled={loading} />
                         {error !== '' && <Text style={styles.error}>{error}</Text>}
                     </>
                 )}
@@ -89,7 +121,7 @@ export function AddScreen({
                     <View style={styles.reviewArea}>
                         <Text style={styles.sectionTitle}>Pregled</Text>
                         <Text style={styles.counter}>Preostalo za pregled: {pendingQueue.length}</Text>
-                        <QuestionCard question={currentQuestion.question} answer={currentQuestion.answer} />
+                        <QuestionCard question={currentQuestion.question} answer={currentQuestion.answer} cardType={currentQuestion.type} />
                         <View style={styles.buttonRow}>
                             <AppButton title="Odbaci" variant="danger" onPress={onReject} />
                             <AppButton title="Prihvati" onPress={onAccept} />
@@ -119,3 +151,15 @@ export function AddScreen({
         </ScreenBackground>
     );
 }
+
+const localStyles = StyleSheet.create({
+    presetGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        justifyContent: 'space-between',
+        width: '100%',
+    },
+    presetItem: {
+        width: '31%',
+    },
+});

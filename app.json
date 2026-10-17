@@ -1,5 +1,6 @@
 {
   "expo": {
+    "backgroundColor": "#1B140F",
     "name": "studyquest",
     "slug": "studyquest",
     "version": "1.0.0",
@@ -26,7 +27,8 @@
       "expo-sqlite",
       "expo-status-bar",
       "expo-font",
-      "expo-sharing"
+      "expo-sharing",
+      "expo-secure-store"
     ]
   }
 }

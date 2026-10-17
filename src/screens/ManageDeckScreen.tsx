@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { getQuestionsByDeck, QuestionWithImages, StoredQuestion } from "../db/database";
+import { getLeechQuestions, getQuestionsByDeck, QuestionWithImages, Stats, StoredQuestion } from "../db/database";
 import { EditQuestionScreen } from "./EditQuestionScreen";
-import { BackHandler, Button, Image, Pressable, ScrollView, Text } from "react-native";
+import { BackHandler, Button, Image, Pressable, ScrollView, Text, View } from "react-native";
 import { styles } from "../styles/styles";
 import { ScreenBackground } from "../components/ScreenBackground";
 import { AppButton } from "../components/AppButton";
@@ -9,20 +9,22 @@ import { AppButton } from "../components/AppButton";
 type Props = {
     deckId: number;
     deckName: string;
+    stats: Stats;
     onExit: () => void;
 }
 
-export function ManageDeckScreen({ deckId, deckName, onExit }: Props) {
+export function ManageDeckScreen({ deckId, deckName, stats, onExit }: Props) {
     const [questions, setQuestions] = useState<QuestionWithImages[]>([]);
     const [editing, setEditing] = useState<StoredQuestion | null>(null);
+    const [showLeechOnly, setShowLeechOnly] = useState(false);
 
     function refresh() {
-        setQuestions(getQuestionsByDeck(deckId));
+        setQuestions(showLeechOnly ? getLeechQuestions(deckId) : getQuestionsByDeck(deckId));
     }
 
     useEffect(() => {
         refresh();
-    }, [deckId]);
+    }, [deckId, showLeechOnly]);
     // pokrenuti ponovo kad se deckId promijeni
 
     useEffect(() => {
@@ -44,6 +46,7 @@ export function ManageDeckScreen({ deckId, deckName, onExit }: Props) {
                 onSaved={() => { setEditing(null); refresh(); }}
                 onDeleted={() => { setEditing(null); refresh(); }}
                 onCancel={() => setEditing(null)}
+                stats={stats}
             />
         );
     }
@@ -52,6 +55,20 @@ export function ManageDeckScreen({ deckId, deckName, onExit }: Props) {
         <ScreenBackground>
             <ScrollView contentContainerStyle={styles.container}>
                 <Text style={styles.sectionTitle}>{deckName}</Text>
+
+                <View style={styles.buttonRow}>
+                    <AppButton
+                        title="Sve kartice"
+                        variant={!showLeechOnly ? 'primary' : 'secondary'}
+                        onPress={() => setShowLeechOnly(false)}
+                    />
+                    <AppButton
+                        title="⚠️ Samo izbačene"
+                        variant={showLeechOnly ? 'primary' : 'secondary'}
+                        onPress={() => setShowLeechOnly(true)}
+                    />
+                </View>
+
                 <Text style={styles.counter}>{questions.length} pitanja</Text>
 
                 {questions.map(q => (

@@ -5,6 +5,7 @@ import { Button, ScrollView, Text, View } from 'react-native';
 import { QuestionCard } from '../components/QuestionCard';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { AppButton } from '../components/AppButton';
+import { colors, fonts, spacing } from '../styles/theme';
 
 const QUESTION_COUNT = 10;
 const TIME_LIMIT_SEC = 120;
@@ -66,19 +67,27 @@ export function BossFightScreen({ deckId, onFinish, onExit }: Props) {
 
     if (questions.length === 0) {
         return (
-            <View style={styles.container}>
-                <Text>Učitavanje...</Text>
-            </View>
-        )
+            <ScreenBackground>
+                <View style={[styles.container, { justifyContent: 'center', flex: 1 }]}>
+                    <Text style={{ fontFamily: fonts.body, color: colors.inkMuted }}>Učitavanje...</Text>
+                </View>
+            </ScreenBackground>)
     }
 
     if (finished) {
         return (
-            <View style={styles.container}>
-                <Text style={{ fontSize: 24, fontWeight: 'bold' }}>Boss fight gotov!</Text>
-                <Text style={{ fontSize: 24, marginTop: 10 }}>Tačno: {correctCount}/{questions.length}</Text>
-                <Button title="Pokupi nagradu" onPress={handleClaimReward} />
-            </View>
+            <ScreenBackground>
+                <View style={[styles.container, { justifyContent: 'center', flex: 1 }]}>
+                    <Text style={{ fontFamily: fonts.display, fontSize: 28, color: colors.gold, textAlign: 'center' }}>
+                        Boss Fight gotov
+                    </Text>
+                    <View style={styles.divider} />
+                    <Text style={{ fontFamily: fonts.body, fontSize: 20, color: colors.ink, marginTop: spacing.sm }}>
+                        Tačno: {correctCount} / {questions.length}
+                    </Text>
+                    <AppButton title="Pokupi nagradu" onPress={handleClaimReward} />
+                </View>
+            </ScreenBackground>
         );
     }
 
@@ -87,7 +96,9 @@ export function BossFightScreen({ deckId, onFinish, onExit }: Props) {
     return (
         <ScreenBackground>
             <ScrollView contentContainerStyle={styles.container}>
-                <Text style={{ fontSize: 18, fontWeight: 'bold', color: timeLeft <= 10 ? 'red' : '#333' }}>{timeLeft}s</Text>
+                <Text style={{ fontFamily: fonts.display, fontSize: 22, color: timeLeft <= 10 ? colors.wine : colors.gold }}>
+                    ⏱ {timeLeft}s
+                </Text>
                 <Text style={styles.counter}>Pitanje {index + 1} / {questions.length}</Text>
 
                 <QuestionCard
@@ -95,18 +106,19 @@ export function BossFightScreen({ deckId, onFinish, onExit }: Props) {
                     answer={showAnswer ? current.answer : undefined}
                     questionImages={current.questionImages}
                     answerImages={showAnswer ? current.answerImages : undefined}
+                    cardType={current.cardType}
                 />
 
                 {!showAnswer ? (
                     <AppButton title="Prikaži odgovor" onPress={() => setShowAnswer(true)} />
                 ) : (
                     <View style={styles.buttonRow}>
-                        <AppButton title="Nisam znao" variant='wine' onPress={() => handleAnswer(false)} />
-                        <AppButton title="Znao sam" variant='sage' onPress={() => handleAnswer(true)} />
+                        <AppButton title="Nisam znao" variant="wine" onPress={() => handleAnswer(false)} />
+                        <AppButton title="Znao sam" variant="sage" onPress={() => handleAnswer(true)} />
                     </View>
                 )}
 
-                <AppButton title="Odustani" onPress={onExit} />
+                <AppButton title="Odustani" variant="secondary" onPress={onExit} />
             </ScrollView>
         </ScreenBackground>
     );

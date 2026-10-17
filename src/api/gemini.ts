@@ -13,6 +13,8 @@ export type Question = {
     question: string;
     answer: string;
     type?: 'skeleton' | 'detail';
+    questionImages?: string[];
+    answerImages?: string[];
 };
 
 // async funkcije vracaju promise, a ne stvarnu vrijednost

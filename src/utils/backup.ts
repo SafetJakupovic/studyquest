@@ -32,6 +32,7 @@ export async function exportBackup(): Promise<void> {
     }
 }
 
+
 export async function pickAndImportBackup(): Promise<boolean> {
     const result = await DocumentPicker.getDocumentAsync({ type: 'application/json', copyToCacheDirectory: true });
     if (result.canceled)

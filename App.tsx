@@ -205,6 +205,17 @@ export default function App() {
     }
   }
 
+  function handleBulkAdd(items: { question: string; answer: string; cardType?: string; questionImages?: string[]; answerImages?: string[] }[]) {
+    setPendingQueue(items.map(i => ({
+      question: i.question,
+      answer: i.answer,
+      type: i.cardType as 'skeleton' | 'detail' | undefined,
+      questionImages: i.questionImages ?? [],
+      answerImages: i.answerImages ?? [],
+    })));
+    setPendingSource('masovni unos');
+  }
+
   if (!fontsLoaded) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1B140F' }}>
@@ -271,6 +282,7 @@ export default function App() {
                       navigation={navigation}
                       decks={decks}
                       onSelectDeck={setSelectedDeckId}
+                      onBulkAdd={handleBulkAdd}
                     />
                   )}
                 </Tab.Screen>

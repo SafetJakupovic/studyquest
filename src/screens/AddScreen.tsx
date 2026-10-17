@@ -29,6 +29,7 @@ type Props = {
     navigation: any;
     decks: DeckStats[];
     onSelectDeck: (id: number) => void;
+    onBulkAdd: (items: { question: string; answer: string; cardType?: string }[]) => void;
 };
 
 const PROMPT_PRESETS: { label: string; instruction: string; withCardType?: boolean }[] = [
@@ -45,7 +46,7 @@ const SECTION_ORDER: Section[] = ['manual', 'generate', 'manage'];
 const SECTION_LABELS: Record<Section, string> = { manual: 'Ručno', generate: 'Generiši', manage: 'Uredi kartice' };
 
 export function AddScreen({
-    text, onChangeText, onSubmit, loading, error, saved, deckName, pendingQueue, onAccept, onReject, onManualAdd, onCreateDeck, selectedDeckId, navigation, decks, onSelectDeck }: Props) {
+    text, onChangeText, onSubmit, loading, error, saved, deckName, pendingQueue, onAccept, onReject, onManualAdd, onCreateDeck, selectedDeckId, navigation, decks, onSelectDeck, onBulkAdd }: Props) {
     const [section, setSection] = useState<Section>('manual');
     const [instruction, setInstruction] = useState(DEFAULT_INSTRUCTION);
     const [withCardType, setWithCardType] = useState(false);
@@ -121,8 +122,12 @@ export function AddScreen({
                     <View style={styles.reviewArea}>
                         <Text style={styles.sectionTitle}>Pregled</Text>
                         <Text style={styles.counter}>Preostalo za pregled: {pendingQueue.length}</Text>
-                        <QuestionCard question={currentQuestion.question} answer={currentQuestion.answer} cardType={currentQuestion.type} />
-                        <View style={styles.buttonRow}>
+                        <QuestionCard
+                            question={currentQuestion.question}
+                            answer={currentQuestion.answer}
+                            questionImages={currentQuestion.questionImages}
+                            answerImages={currentQuestion.answerImages}
+                        />                        <View style={styles.buttonRow}>
                             <AppButton title="Odbaci" variant="danger" onPress={onReject} />
                             <AppButton title="Prihvati" onPress={onAccept} />
                         </View>
@@ -131,8 +136,7 @@ export function AddScreen({
 
                 {activeSection === 'manual' && !currentQuestion && (
                     <>
-                        <Text style={styles.sectionTitle}>Ručni unos</Text>
-                        <ManualEntryForm onAdd={onManualAdd} />
+                        <ManualEntryForm onAdd={onManualAdd} onBulkAdd={onBulkAdd} />
                     </>
                 )}
 

@@ -757,3 +757,13 @@ export function getLeechCount(deckId: number): number {
     );
     return row?.count ?? 0;
 }
+
+export function createActivity(name: string, xpReward: number, coinsReward: number): number {
+    const r = db.runSync('INSERT INTO activities (name, xpReward, coinsReward) VALUES (?, ?, ?)', [name, xpReward, coinsReward]);
+    return r.lastInsertRowId;
+}
+
+export function deleteActivity(id: number) {
+    db.runSync('DELETE FROM activity_log WHERE activityId = ?', [id]);
+    db.runSync('DELETE FROM activities WHERE id = ?', [id]);
+}

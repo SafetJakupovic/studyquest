@@ -1,8 +1,11 @@
 import { View, Pressable, Text, StyleSheet } from 'react-native';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { colors, fonts } from '../styles/theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export function CustomTabBar({ state, navigation }: BottomTabBarProps) {
+    const insets = useSafeAreaInsets();
+
     return (
         <View style={styles.bar}>
             {state.routes.map((route, index) => {

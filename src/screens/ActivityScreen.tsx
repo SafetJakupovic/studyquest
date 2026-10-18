@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
-import { ActivityWithStatus, getActivitiesWithStatus, getTodayPages, PAGES_PER_REWARD_UNIT, setTodayPages, Stats, toggleActivity } from "../db/database";
+import { ActivityWithStatus, createActivity, deleteActivity, getActivitiesWithStatus, getTodayPages, PAGES_PER_REWARD_UNIT, setTodayPages, Stats, toggleActivity } from "../db/database";
 import { useFocusEffect } from "@react-navigation/native";
-import { Pressable, Text, TextInput, View } from "react-native";
+import { Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { styles } from "../styles/styles";
 import { StatsBar } from "../components/StatsBar";
 import { ScreenBackground } from "../components/ScreenBackground";
@@ -16,6 +16,25 @@ type Props = {
 export function ActivityScreen({ stats, onStatsChange }: Props) {
     const [activities, setActivities] = useState<ActivityWithStatus[]>([]);
     const [pagesInput, setPagesInput] = useState('');
+
+    const [newName, setNewName] = useState('');
+    const [newXp, setNewXp] = useState('5');
+
+    function handleCreateActivity() {
+        const xp = parseInt(newXp, 10);
+        if (newName.trim() === '' || isNaN(xp)) return;
+        createActivity(newName.trim(), xp, xp);
+        setNewName('');
+        setNewXp('5');
+        refresh();
+    }
+
+    function handleDeleteActivity(id: number, name: string) {
+        Alert.alert(`Obriši "${name}"?`, 'Istorija ove aktivnosti će takođe biti obrisana.', [
+            { text: 'Otkaži', style: 'cancel' },
+            { text: 'Obriši', style: 'destructive', onPress: () => { deleteActivity(id); refresh(); } },
+        ]);
+    }
 
     const refresh = useCallback(() => {
         setActivities(getActivitiesWithStatus());
@@ -43,41 +62,50 @@ export function ActivityScreen({ stats, onStatsChange }: Props) {
 
     return (
         <ScreenBackground>
-            <View style={styles.container}>
-                {stats && <StatsBar stats={stats} />}
+            <ScrollView>
+                <View style={styles.container}>
+                    {stats && <StatsBar stats={stats} />}
 
-                <Text style={styles.sectionTitle}>
-                    Današnja aktivnost
-                </Text>
+                    <Text style={styles.sectionTitle}>
+                        Današnja aktivnost
+                    </Text>
 
-                {activities.map(a => (
-                    <Pressable
-                        key={a.id}
-                        onPress={() => handleToggle(a)}
-                        style={({ pressed }) => [
-                            localStyles.row,
-                            a.doneToday && localStyles.rowDone,
-                            pressed && localStyles.rowPressed,
-                        ]}
-                    >
-                        <Text style={localStyles.checkbox}>{a.doneToday ? '✓' : '○'}</Text>
-                        <Text style={localStyles.name}>{a.name}</Text>
-                        <Text style={localStyles.reward}>+{a.xpReward} XP / +{a.coinsReward} coins</Text>
-                    </Pressable>
-                ))}
-                <View style={styles.divider} />
-                <Text style={styles.sectionTitle}>Čitanje</Text>
-                <Text style={styles.counter}>{PAGES_PER_REWARD_UNIT} stranica = 1 XP / 1 coin</Text>
-                <TextInput
-                    style={styles.input}
-                    keyboardType="numeric"
-                    placeholder="Stranica pročitano danas"
-                    placeholderTextColor={colors.inkMuted}
-                    value={pagesInput}
-                    onChangeText={setPagesInput}
-                />
-                <AppButton title="Sačuvaj" onPress={handleSavePages} />
-            </View>
+                    {activities.map(a => (
+                        <Pressable
+                            key={a.id}
+                            onPress={() => handleToggle(a)}
+                            onLongPress={() => handleDeleteActivity(a.id, a.name)}
+                            style={({ pressed }) => [
+                                localStyles.row,
+                                a.doneToday && localStyles.rowDone,
+                                pressed && localStyles.rowPressed,
+                            ]}
+                        >
+                            <Text style={localStyles.checkbox}>{a.doneToday ? '✓' : '○'}</Text>
+                            <Text style={localStyles.name}>{a.name}</Text>
+                            <Text style={localStyles.reward}>+{a.xpReward} XP / +{a.coinsReward} coins</Text>
+                        </Pressable>
+                    ))}
+                    <View style={styles.divider} />
+                    <Text style={styles.sectionTitle}>Čitanje</Text>
+                    <Text style={styles.counter}>{PAGES_PER_REWARD_UNIT} stranica = 1 XP / 1 coin</Text>
+                    <TextInput
+                        style={styles.input}
+                        keyboardType="numeric"
+                        placeholder="Stranica pročitano danas"
+                        placeholderTextColor={colors.inkMuted}
+                        value={pagesInput}
+                        onChangeText={setPagesInput}
+                    />
+                    <AppButton title="Sačuvaj" onPress={handleSavePages} />
+
+                    <View style={styles.divider} />
+                    <Text style={styles.sectionTitle}>Dodaj aktivnost</Text>
+                    <TextInput style={styles.input} placeholder="Naziv aktivnosti..." value={newName} onChangeText={setNewName} />
+                    <TextInput style={styles.input} placeholder="XP/coins nagrada" keyboardType="numeric" value={newXp} onChangeText={setNewXp} />
+                    <AppButton title="Dodaj" variant="secondary" onPress={handleCreateActivity} />
+                </View>
+            </ScrollView>
         </ScreenBackground>
     );
 }

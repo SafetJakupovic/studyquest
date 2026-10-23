@@ -7,7 +7,7 @@ export function CustomTabBar({ state, navigation }: BottomTabBarProps) {
     const insets = useSafeAreaInsets();
 
     return (
-        <View style={styles.bar}>
+        <View style={[styles.bar, { height: 50 + insets.bottom, paddingBottom: insets.bottom }]}>
             {state.routes.map((route, index) => {
                 const focused = state.index === index;
                 const isLast = index === state.routes.length - 1;
@@ -30,7 +30,6 @@ export function CustomTabBar({ state, navigation }: BottomTabBarProps) {
 const styles = StyleSheet.create({
     bar: {
         flexDirection: 'row',
-        height: 50,
         backgroundColor: colors.surface,
     },
     item: {

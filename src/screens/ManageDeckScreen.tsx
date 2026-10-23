@@ -51,6 +51,11 @@ export function ManageDeckScreen({ deckId, deckName, stats, onExit }: Props) {
         );
     }
 
+    function previewText(text: string): string {
+        const cleaned = text.replace(/\{\{slika\}\}/g, '').trim();
+        return cleaned !== '' ? cleaned : '(samo slika, bez teksta)';
+    }
+
     return (
         <ScreenBackground>
             <ScrollView contentContainerStyle={styles.container}>
@@ -79,9 +84,7 @@ export function ManageDeckScreen({ deckId, deckName, stats, onExit }: Props) {
                                 style={{ width: 48, height: 48, borderRadius: 4, marginRight: 12 }}
                                 resizeMode="cover" />
                         )}
-                        <Text style={[styles.question, { flex: 1 }]}>
-                            {q.question.trim() !== '' ? q.question : '(bez teksta - pogledaj sliku)'}
-                        </Text>
+                        <Text style={[styles.question, { flex: 1 }]}>{previewText(q.question)}</Text>
                     </Pressable>
                 ))}
 

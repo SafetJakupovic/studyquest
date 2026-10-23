@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { generateQuestions, Question } from './src/api/gemini';
+import { generateQuestions, Question } from './src/api/llm';
 import { initDatabase, insertQuestions, getAllQuestions, StoredQuestion, QuestionWithImages, getTodaySummary, updateLeechTracking, getLeechCount } from './src/db/database';
 import { fsrs, generatorParameters, Rating, type Card, type Grade } from 'ts-fsrs';
 import { getDueQuestions, updateCardAfterReview, getQuestionById, DeckStats, getDeckStats, createDeck, getStats, applyReviewReward, Stats } from './src/db/database';
@@ -159,7 +159,7 @@ export default function App() {
     setLoading(true);
     setError('');
     try {
-      const result = await generateQuestions(text, instruction, withCardType);
+      const result = await generateQuestions(text, instruction);
       setPendingQueue(result);
       setPendingSource(text);
     } catch (e: any) {

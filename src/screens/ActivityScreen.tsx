@@ -88,7 +88,7 @@ export function ActivityScreen({ stats, onStatsChange }: Props) {
                     ))}
                     <View style={styles.divider} />
                     <Text style={styles.sectionTitle}>Čitanje</Text>
-                    <Text style={styles.counter}>{PAGES_PER_REWARD_UNIT} stranica = 1 XP / 1 coin</Text>
+                    <Text style={styles.counter}>{stats?.coinsPerPage ?? 2} XP/coin po stranici</Text>
                     <TextInput
                         style={styles.input}
                         keyboardType="numeric"

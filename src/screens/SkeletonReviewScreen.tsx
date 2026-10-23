@@ -1,11 +1,12 @@
+// da ne brisem pa ponovo pisem nov fajl, samo sam iskoristio ovo za drugacini nacin ponavljanja gradiva, a ostavio ime
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView } from 'react-native';
 import { styles } from '../styles/styles';
-import { colors, fonts } from '../styles/theme';
+import { colors, fonts, spacing } from '../styles/theme';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { AppButton } from '../components/AppButton';
 import { QuestionCard } from '../components/QuestionCard';
-import { getSkeletonQuestions, QuestionWithImages } from '../db/database';
+import { getQuestionsByDeck, QuestionWithImages } from '../db/database';
 
 type Props = {
     deckId: number;
@@ -19,16 +20,12 @@ export function SkeletonReviewScreen({ deckId, deckName, onExit }: Props) {
     const [showAnswer, setShowAnswer] = useState(false);
 
     useEffect(() => {
-        setQuestions(getSkeletonQuestions(deckId));
+        setQuestions(getQuestionsByDeck(deckId)); // cijeli špil, bez obzira na FSRS raspored
     }, [deckId]);
 
     function handleNext() {
-        if (index + 1 >= questions.length) {
-            setIndex(questions.length);
-        } else {
-            setIndex(index + 1);
-            setShowAnswer(false);
-        }
+        setIndex(prev => prev + 1);
+        setShowAnswer(false);
     }
 
     if (questions.length === 0) {
@@ -36,7 +33,7 @@ export function SkeletonReviewScreen({ deckId, deckName, onExit }: Props) {
             <ScreenBackground>
                 <View style={[styles.container, { flex: 1, justifyContent: 'center' }]}>
                     <Text style={{ fontFamily: fonts.body, color: colors.inkMuted, textAlign: 'center' }}>
-                        Nema "skelet" kartica u ovom špilu.
+                        Ovaj špil je prazan.
                     </Text>
                     <AppButton title="Nazad" variant="secondary" onPress={onExit} />
                 </View>
@@ -45,15 +42,33 @@ export function SkeletonReviewScreen({ deckId, deckName, onExit }: Props) {
     }
 
     if (index >= questions.length) {
+        const hardest = [...questions].filter(q => q.lapses > 0).sort((a, b) => b.lapses - a.lapses).slice(0, 5);
+
         return (
             <ScreenBackground>
-                <View style={[styles.container, { flex: 1, justifyContent: 'center' }]}>
+                <ScrollView contentContainerStyle={[styles.container, { flex: 1, justifyContent: 'center' }]}>
                     <Text style={{ fontFamily: fonts.display, fontSize: 24, color: colors.gold, textAlign: 'center' }}>
                         Pregled gotov
                     </Text>
-                    <Text style={styles.counter}>Prošao si {questions.length} tema iz "{deckName}".</Text>
+                    <Text style={styles.counter}>Prošao si {questions.length} kartica iz "{deckName}".</Text>
+
+                    {hardest.length > 0 && (
+                        <>
+                            <View style={styles.divider} />
+                            <Text style={[styles.sectionTitle, { alignSelf: 'center' }]}>⚠️ Najteža pitanja</Text>
+                            {hardest.map(q => (
+                                <View key={q.id} style={{ width: '100%', paddingVertical: spacing.xs }}>
+                                    <Text style={{ fontFamily: fonts.body, color: colors.ink }}>{q.question}</Text>
+                                    <Text style={{ fontFamily: fonts.body, fontSize: 12, color: colors.wine }}>
+                                        Zaboravljeno {q.lapses} {q.lapses === 1 ? 'put' : 'puta'}
+                                    </Text>
+                                </View>
+                            ))}
+                        </>
+                    )}
+
                     <AppButton title="Nazad" onPress={onExit} />
-                </View>
+                </ScrollView>
             </ScreenBackground>
         );
     }
@@ -64,7 +79,7 @@ export function SkeletonReviewScreen({ deckId, deckName, onExit }: Props) {
         <ScreenBackground>
             <ScrollView contentContainerStyle={styles.container}>
                 <Text style={{ fontFamily: fonts.display, fontSize: 18, color: colors.gold }}>
-                    Pregled gradiva — {deckName}
+                    📖 Pregled gradiva — {deckName}
                 </Text>
                 <Text style={styles.counter}>{index + 1} / {questions.length}</Text>
 
@@ -73,7 +88,6 @@ export function SkeletonReviewScreen({ deckId, deckName, onExit }: Props) {
                     answer={showAnswer ? current.answer : undefined}
                     questionImages={current.questionImages}
                     answerImages={showAnswer ? current.answerImages : undefined}
-                    cardType={current.cardType}
                 />
 
                 {!showAnswer ? (
@@ -81,7 +95,6 @@ export function SkeletonReviewScreen({ deckId, deckName, onExit }: Props) {
                 ) : (
                     <AppButton title="Sljedeće" onPress={handleNext} />
                 )}
-
                 <AppButton title="Prekini pregled" variant="secondary" onPress={onExit} />
             </ScrollView>
         </ScreenBackground>

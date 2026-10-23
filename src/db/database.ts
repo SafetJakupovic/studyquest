@@ -15,6 +15,7 @@ export type Stats = {
     lastStudyDate: string | null;
     maxNewCardsPerDay: number;
     leechThreshold: number;
+    coinsPerPage: number;
 };
 
 export type DeckStats = {
@@ -265,6 +266,28 @@ export function initDatabase() {
             }
             db.execSync('PRAGMA user_version = 10');
         })
+    }
+
+    if (version < 11) {
+        db.withTransactionSync(() => {
+            const columns = db.getAllSync<{ name: string }>('PRAGMA table_info(stats)');
+            if (!columns.some(c => c.name === 'coinsPerPage')) {
+                db.execSync('ALTER TABLE stats ADD COLUMN coinsPerPage INTEGER NOT NULL DEFAULT 5;');
+            }
+            db.execSync('PRAGMA user_version = 11');
+        });
+    }
+
+    if (version < 12) {
+        db.withTransactionSync(() => {
+            const columns = db.getAllSync<{ name: string }>('PRAGMA table_info(stats)');
+            const hasOld = columns.some(c => c.name === 'coinsPerPage');
+            const hasNew = columns.some(c => c.name === 'coinsPerPage');
+            if (hasOld && !hasNew) {
+                db.execSync('ALTER TABLE stats RENAME COLUMN coinsPerPage TO coinsPerPage;');
+            }
+            db.execSync('PRAGMA user_version = 12');
+        });
     }
 
     // ocistio bazu s ovim kad sam pogresan format stavio
@@ -552,20 +575,26 @@ export function getTodayPages(): number {
 export function setTodayPages(newPages: number): Stats {
     const today = new Date().toISOString().slice(0, 10);
     const oldPages = getTodayPages();
+    const stats = getStats();
+    const coinsPerPage = stats.coinsPerPage;
 
-    if (newPages < 0)
-        newPages = 0;
+    if (newPages < 0) newPages = 0;
 
-    const oldUnits = Math.floor(oldPages / PAGES_PER_REWARD_UNIT);
-    const newUnits = Math.floor(newPages / PAGES_PER_REWARD_UNIT);
-    const deltaUnits = newUnits - oldUnits;
+    const deltaPages = newPages - oldPages;
+    const deltaReward = deltaPages * coinsPerPage;
 
-    // ako moze update, ako ne onda insert, zavisi od datuma
-    db.runSync('INSERT INTO reading_log (date, pages) VALUES (?, ?) ON CONFLICT(date) DO UPDATE SET pages = excluded.pages', [today, newPages]);
+    db.runSync(
+        'INSERT INTO reading_log (date, pages) VALUES (?, ?) ON CONFLICT(date) DO UPDATE SET pages = excluded.pages',
+        [today, newPages]
+    );
+    if (deltaReward !== 0) {
+        db.runSync('UPDATE stats SET xp = xp + ?, coins = coins + ? WHERE id = 1', [deltaReward, deltaReward]);
+    }
+    return getStats();
+}
 
-    if (deltaUnits !== 0)
-        db.runSync('UPDATE stats SET xp = xp + ?, coins = coins + ? WHERE id = 1', [deltaUnits, deltaUnits]);
-
+export function setcoinsPerPage(value: number): Stats {
+    db.runSync('UPDATE stats SET coinsPerPage = ? WHERE id = 1', [Math.max(1, value)]);
     return getStats();
 }
 

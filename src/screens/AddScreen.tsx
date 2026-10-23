@@ -1,7 +1,7 @@
 import { View, Text, Button, TextInput, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
 import { styles } from '../styles/styles';
 import { QuestionCard } from '../components/QuestionCard';
-import { DEFAULT_INSTRUCTION, SKELETON_DETAIL_INSTRUCTION, type Question } from '../api/gemini';
+import { DEFAULT_INSTRUCTION, type Question } from '../api/llm';
 import { ManualEntryForm } from '../components/ManualEntryForm';
 import { DeckCreateForm } from '../components/DeckCreateForm';
 import { useState } from 'react';
@@ -38,7 +38,7 @@ const PROMPT_PRESETS: { label: string; instruction: string; withCardType?: boole
     { label: 'Definicije', instruction: 'Na osnovu sljedećeg teksta, napravi 5 pitanja koja traže preciznu definiciju ključnih pojmova. Svako pitanje treba imati kratak, jasan odgovor.' },
     { label: 'Poređenje', instruction: 'Na osnovu sljedećeg teksta, napravi 5 pitanja koja traže poređenje ili razliku između dva povezana pojma. Svako pitanje treba imati kratak, jasan odgovor.' },
     { label: 'Primjena', instruction: 'Na osnovu sljedećeg teksta, napravi 5 pitanja koja traže primjenu koncepta na nov primjer ili scenario, ne samo ponavljanje definicije. Svako pitanje treba imati kratak, jasan odgovor.' },
-    { label: 'Skelet + detalji', instruction: SKELETON_DETAIL_INSTRUCTION, withCardType: true },
+    { label: 'Narativni tekst', instruction: 'Tekst je narativnog/opisnog karaktera, ne nabrajanje. Za svako pitanje OBAVEZNO uključi u sam tekst pitanja dovoljno konteksta (naziv teme, trenda ili koncepta na koji se odnosi) da pitanje ima smisla samostalno, bez uvida u izvorni tekst ili druga pitanja. Daj prednost pitanjima oblika "zašto" i "kako", ne samo "šta". Odgovor treba uključivati kratko obrazloženje uzroka/posljedice, ne samo gol podatak. Izbjegavaj pitanja o izolovanim sitnim detaljima (datumima, imenima) bez objašnjenja zašto su bitni.' }
 ];
 
 type Section = 'manual' | 'generate' | 'manage';

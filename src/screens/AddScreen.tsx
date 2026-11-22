@@ -10,6 +10,7 @@ import { AppButton } from '../components/AppButton';
 import { colors } from '../styles/theme';
 import { DeckStats } from '../db/database';
 import { DeckSelector } from '../components/DeckSelector';
+import { AppAlert } from '../components/AppAlert';
 //import { pickAndReadPdf } from '../utils/pdfReader';
 
 type Props = {
@@ -30,6 +31,7 @@ type Props = {
     decks: DeckStats[];
     onSelectDeck: (id: number) => void;
     onBulkAdd: (items: { question: string; answer: string; cardType?: string }[]) => void;
+    onDeleteDeck: (id: number) => void;
 };
 
 const PROMPT_PRESETS: { label: string; instruction: string; withCardType?: boolean }[] = [
@@ -46,12 +48,37 @@ const SECTION_ORDER: Section[] = ['manual', 'generate', 'manage'];
 const SECTION_LABELS: Record<Section, string> = { manual: 'Ručno', generate: 'Generiši', manage: 'Uredi kartice' };
 
 export function AddScreen({
-    text, onChangeText, onSubmit, loading, error, saved, deckName, pendingQueue, onAccept, onReject, onManualAdd, onCreateDeck, selectedDeckId, navigation, decks, onSelectDeck, onBulkAdd }: Props) {
+    text, onChangeText, onSubmit, loading, error, saved, deckName, pendingQueue, onAccept, onReject, onManualAdd, onCreateDeck, selectedDeckId, navigation, decks, onSelectDeck, onBulkAdd, onDeleteDeck }: Props) {
     const [section, setSection] = useState<Section>('manual');
     const [instruction, setInstruction] = useState(DEFAULT_INSTRUCTION);
     const [withCardType, setWithCardType] = useState(false);
     const currentQuestion = pendingQueue[0];
     const activeSection = currentQuestion ? 'generate' : section;
+
+    const [alertConfig, setAlertConfig] = useState<{
+        title: string;
+        message?: string;
+        buttons: { text: string; onPress?: () => void; variant?: 'primary' | 'secondary' | 'danger' }[];
+    } | null>(null);
+
+    function handleDeleteDeckPress() {
+        const deck = decks.find(d => d.id === selectedDeckId);
+        if (!deck) return;
+
+        if (decks.length <= 1) {
+            setAlertConfig({ title: 'Nije moguće', message: 'Mora ostati bar jedan špil.', buttons: [{ text: 'U redu' }] });
+            return;
+        }
+
+        setAlertConfig({
+            title: `Obrisati "${deck.name}"?`,
+            message: `Trajno će se obrisati sve kartice iz ovog špila (${deck.total}), zajedno sa slikama. Ovo se ne može poništiti.`,
+            buttons: [
+                { text: 'Otkaži', variant: 'secondary' },
+                { text: 'Obriši špil', variant: 'danger', onPress: () => onDeleteDeck(deck.id) },
+            ],
+        });
+    }
 
     /*async function handlePickPdf() {
         try {
@@ -149,9 +176,21 @@ export function AddScreen({
                             variant="secondary"
                             onPress={() => navigation.navigate('ManageDeck', { deckId: selectedDeckId })}
                         />
+                        <AppButton
+                            title={`Obriši špil "${deckName ?? ''}"`}
+                            variant="danger"
+                            onPress={handleDeleteDeckPress}
+                        />
                     </>
                 )}
             </ScrollView>
+            <AppAlert
+                visible={alertConfig !== null}
+                title={alertConfig?.title ?? ''}
+                message={alertConfig?.message}
+                buttons={alertConfig?.buttons ?? []}
+                onRequestClose={() => setAlertConfig(null)}
+            />
         </ScreenBackground>
     );
 }

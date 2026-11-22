@@ -5,12 +5,13 @@ type Variant = 'primary' | 'secondary' | 'danger' | 'ghost' | 'sage' | 'rust' | 
 
 type Props = {
     title: string;
+    subtitle?: string;
     onPress: () => void;
     variant?: Variant;
     disabled?: boolean;
 };
 
-export function AppButton({ title, onPress, variant = 'primary', disabled = false }: Props) {
+export function AppButton({ title, subtitle, onPress, variant = 'primary', disabled = false }: Props) {
     return (
         <Pressable
             onPress={onPress}
@@ -24,6 +25,7 @@ export function AppButton({ title, onPress, variant = 'primary', disabled = fals
             ]}
         >
             <Text style={[styles.text, variant === 'ghost' && styles.textGhost]}>{title}</Text>
+            {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
         </Pressable>
     )
 }
@@ -51,6 +53,12 @@ const styles = StyleSheet.create({
     },
     disabled: {
         opacity: 0.4,
+    },
+    subtitle: {
+        fontFamily: fonts.body,
+        fontSize: 11,
+        color: colors.inkMuted,
+        marginTop: 2,
     },
 });
 

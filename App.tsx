@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { generateQuestions, Question } from './src/api/llm';
-import { initDatabase, insertQuestions, getAllQuestions, StoredQuestion, QuestionWithImages, getTodaySummary, updateLeechTracking, getLeechCount } from './src/db/database';
+import { initDatabase, insertQuestions, getAllQuestions, StoredQuestion, QuestionWithImages, getTodaySummary, updateLeechTracking, getLeechCount, markNewCardReviewed, deleteDeck } from './src/db/database';
 import { fsrs, generatorParameters, Rating, type Card, type Grade } from 'ts-fsrs';
 import { getDueQuestions, updateCardAfterReview, getQuestionById, DeckStats, getDeckStats, createDeck, getStats, applyReviewReward, Stats } from './src/db/database';
 import { NavigationContainer } from '@react-navigation/native';
@@ -24,10 +24,14 @@ import { runAutoBackupIfNeeded } from './src/utils/autoBackup';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { SkeletonReviewScreen } from './src/screens/SkeletonReviewScreen';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
+import { SourceSans3_400Regular, SourceSans3_600SemiBold } from '@expo-google-fonts/source-sans-3';
 
 const scheduler = fsrs(generatorParameters());
 const SESSION_WINDOW_MS = 20 * 60 * 1000; // pitanja koja su na redu u narednih 20 minuta ostaju u sesiji, da se ne razvlaci puno
 const Tab = createBottomTabNavigator();
+
+const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 
 type RootStackParamList = {
   MainTabs: undefined;
@@ -36,6 +40,7 @@ type RootStackParamList = {
   Settings: undefined;
   SkeletonReview: { deckId: number };
 }
+
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function App() {
@@ -44,6 +49,8 @@ export default function App() {
     PlayfairDisplay_700Bold,
     Lora_400Regular,
     Lora_600SemiBold,
+    SourceSans3_400Regular,
+    SourceSans3_600SemiBold,
   });
 
   const [text, setText] = useState('');
@@ -78,6 +85,19 @@ export default function App() {
     setSaved(getAllQuestions());
     runAutoBackupIfNeeded().catch(() => { });
     setTodaySummary(getTodaySummary());
+    if (!isExpoGo) {
+      import('expo-notifications').then(Notifications => {
+        Notifications.setNotificationHandler({
+          handleNotification: async () => ({
+            shouldShowAlert: true,
+            shouldPlaySound: true,
+            shouldSetBadge: false,
+            shouldShowBanner: true,
+            shouldShowList: true,
+          }),
+        });
+      }).catch(() => { });
+    }
   }, []);
   // [] znaci samo jednom pokrenuti, ne pri svakom re-renderu
 
@@ -96,7 +116,6 @@ export default function App() {
     setDecks(getDeckStats());
     setTodaySummary(getTodaySummary());
   }, []);
-
 
   // atp se ne isplati prebacivati jos vise u deck picker, ali barem je iole urednije ovdje pa nema veze, a ne bih (barem za sad?) globalne state menadzere ubacivao
   function handleCreateDeck(name: string) {
@@ -118,8 +137,26 @@ export default function App() {
     setShowAnswer(false);
   }
 
+  function handleDeleteDeck(id: number) {
+    deleteDeck(id);
+    const deckStats = getDeckStats();
+    setDecks(deckStats);
+    if (selectedDeckId === id) {
+      setSelectedDeckId(deckStats[0]?.id ?? null);
+      setDueQueue([]);
+      setInfo('');
+    }
+    setSaved(getAllQuestions());
+    setTodaySummary(getTodaySummary());
+  }
+
   function handleRate(grade: Grade) {
     const current = dueQueue[0];
+
+    if (current.state === 0 && selectedDeckId !== null) {
+      markNewCardReviewed(selectedDeckId, current.id);
+    }
+
     // vadimo iz sqlite i pretvaramo u card kakav fsrs ocekuje pa se datum konvertuje
     const cardBefore: Card = {
       due: new Date(current.due),
@@ -285,6 +322,7 @@ export default function App() {
                         decks={decks}
                         onSelectDeck={setSelectedDeckId}
                         onBulkAdd={handleBulkAdd}
+                        onDeleteDeck={handleDeleteDeck}
                       />
                     )}
                   </Tab.Screen>
@@ -349,6 +387,7 @@ export default function App() {
                 <SkeletonReviewScreen
                   deckId={route.params.deckId}
                   deckName={decks.find(d => d.id === route.params.deckId)?.name ?? ''}
+                  onStatsChange={setStats}
                   onExit={() => navigation.goBack()}
                 />
               )}

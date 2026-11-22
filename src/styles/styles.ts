@@ -44,13 +44,15 @@ export const styles = StyleSheet.create({
         minHeight: 120,
     },
     question: {
-        fontFamily: fonts.display,
+        fontFamily: fonts.cardSemiBold,
         fontSize: 19,
+        lineHeight: 26,
         color: colors.ink,
     },
     answer: {
-        fontFamily: fonts.body,
-        fontSize: 16,
+        fontFamily: fonts.card,
+        fontSize: 17,
+        lineHeight: 24,
         color: colors.inkMuted,
         marginTop: spacing.sm,
     },

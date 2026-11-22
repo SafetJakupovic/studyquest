@@ -22,6 +22,8 @@ export const fonts = {
     displayRegular: 'PlayfairDisplay_400Regular',
     body: 'Lora_400Regular',
     bodySemiBold: 'Lora_600SemiBold',
+    card: 'SourceSans3_400Regular',
+    cardSemiBold: 'SourceSans3_600SemiBold',
 }
 
 export const spacing = {

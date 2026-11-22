@@ -28,7 +28,18 @@
       "expo-status-bar",
       "expo-font",
       "expo-sharing",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#1B140F",
+          "sounds": [
+            "./assets/sounds/timer_end.wav"
+          ]
+        }
+      ],
+      "expo-asset"
     ],
     "extra": {
       "eas": {

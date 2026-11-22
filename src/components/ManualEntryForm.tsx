@@ -5,6 +5,7 @@ import { ImageListPicker } from './ImageListPicker';
 import { AppButton } from './AppButton';
 import { parseBulkText } from '../utils/bulkParse';
 import { downloadAllIfRemote } from '../utils/downloadImage';
+import * as DocumentPicker from 'expo-document-picker';
 
 type Props = {
     onAdd: (question: string, answer: string, questionImages: string[], answerImages: string[]) => void;
@@ -51,7 +52,17 @@ export function ManualEntryForm({ onAdd, onBulkAdd }: Props) {
         setQuestion(''); setAnswer(''); setQuestionImages([]); setAnswerImages([]);
     }
 
-
+    async function handlePickFile() {
+        const result = await DocumentPicker.getDocumentAsync({ type: 'text/plain', copyToCacheDirectory: true });
+        if (result.canceled) return;
+        try {
+            const response = await fetch(result.assets[0].uri);
+            const text = await response.text();
+            setBulkText(text);
+        } catch (e: any) {
+            console.log('Greška pri čitanju fajla:', e.message);
+        }
+    }
 
     return (
         <View style={{ width: '100%', marginTop: 15 }}>
@@ -63,6 +74,8 @@ export function ManualEntryForm({ onAdd, onBulkAdd }: Props) {
 
             {bulkMode ? (
                 <>
+                    <AppButton title="📄 Učitaj .txt fajl" variant="secondary" onPress={handlePickFile} />
+
                     <TextInput
                         style={[styles.input, { minHeight: 180, textAlignVertical: 'top' }]}
                         multiline

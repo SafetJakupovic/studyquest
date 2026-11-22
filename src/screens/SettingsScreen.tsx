@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { exportBackup, pickAndImportBackup } from "../utils/backup";
-import { ActivityIndicator, Alert, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, ScrollView, Switch, Text, TextInput, View } from "react-native";
 import { ScreenBackground } from "../components/ScreenBackground";
 import { styles } from "../styles/styles";
 import { AppButton } from "../components/AppButton";
-import { setLeechThreshold, setMaxNewCardsPerDay, setcoinsPerPage, Stats } from "../db/database";
+import { setLeechThreshold, setMaxNewCardsPerDay, setcoinsPerPage, Stats, setShowDuePreview } from "../db/database";
 import { listAutoBackups, restoreAutoBackup } from "../utils/autoBackup";
 import { clearApiKey, hasCustomApiKey, setApiKey } from "../utils/apiKey";
 import { getLLMConfig, LLMConfig, PROVIDER_PRESETS, setLLMConfig } from "../utils/llmConfig";
+import { colors, spacing } from "../styles/theme";
 
 type Props = {
     stats: Stats | null;
@@ -157,6 +158,15 @@ export function SettingsScreen({ stats, onStatsChange, onImported, onExit }: Pro
                     <TextInput style={styles.input} keyboardType="numeric" value={pagesUnitInput} onChangeText={setPagesUnitInput} />
                     <AppButton title="Sačuvaj" variant="secondary" onPress={handleSavePagesUnit} />
 
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginTop: spacing.sm }}>
+                        <Text style={styles.counter}>Prikaži kad se kartica vraća, uz dugmad u sesiji</Text>
+                        <Switch
+                            value={!!stats?.showDuePreview}
+                            onValueChange={async (val) => onStatsChange(setShowDuePreview(val))}
+                            trackColor={{ true: colors.gold, false: colors.border }}
+                        />
+                    </View>
+
                     <View style={styles.divider} />
 
                     <Text style={styles.counter}>
@@ -177,22 +187,6 @@ export function SettingsScreen({ stats, onStatsChange, onImported, onExit }: Pro
                     {autoBackups.map(f => (
                         <AppButton key={f} title={f.replace('backup-', '').replace('.json', '')} variant="secondary" onPress={() => handleRestoreAuto(f)} disabled={busy} />
                     ))}
-
-                    <View style={styles.divider} />
-                    <Text style={styles.sectionTitle}>Gemini API ključ</Text>
-                    <Text style={styles.counter}>
-                        {usingCustomKey ? 'Koristiš svoj vlastiti ključ.' : 'Koristiš podrazumijevani ključ iz aplikacije.'}
-                    </Text>
-                    <TextInput
-                        style={styles.input}
-                        placeholder="AIzaSy..."
-                        value={apiKeyInput}
-                        onChangeText={setApiKeyInput}
-                        secureTextEntry
-                        autoCapitalize="none"
-                    />
-                    <AppButton title="Sačuvaj moj ključ" variant="secondary" onPress={handleSaveKey} />
-                    {usingCustomKey && <AppButton title="Ukloni moj ključ" variant="danger" onPress={handleClearKey} />}
 
                     <View style={styles.divider} />
 

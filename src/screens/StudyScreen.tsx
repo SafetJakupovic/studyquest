@@ -10,6 +10,7 @@ import { useCallback } from 'react';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { AppButton } from '../components/AppButton';
 import { colors, fonts } from '../styles/theme';
+import { formatRelativeDue, previewNextDue } from '../utils/fsrsPreview';
 
 type Props = {
     decks: DeckStats[];
@@ -65,12 +66,17 @@ export function StudyScreen({
                             variant="secondary"
                             onPress={() => navigation.navigate('BossFight')}
                         />
-
                         <AppButton
                             title="Pregled gradiva"
                             variant="ghost"
                             onPress={() => navigation.navigate('SkeletonReview', { deckId: selectedDeckId })}
                         />
+                        {/*<AppButton
+                            title="🔄 Osvježi"
+                            variant="ghost"
+                            onPress={onStartSession}
+                        />*/}
+
                     </View>
 
 
@@ -82,7 +88,6 @@ export function StudyScreen({
                     {/* sesija ponavljanja */}
                     {dueQueue.length > 0 && (
                         <View style={styles.reviewArea}>
-                            <Text style={styles.counter}>Preostalo u sesiji: {dueQueue.length}</Text>
                             <QuestionCard
                                 question={dueQueue[0].question}
                                 answer={showAnswer ? dueQueue[0].answer : undefined}
@@ -93,13 +98,25 @@ export function StudyScreen({
                             />
 
                             {!showAnswer ? (
-                                <AppButton title="Prikazi odgovor" onPress={onShowAnswer} />
+                                <AppButton title="Prikaži odgovor" onPress={onShowAnswer} />
                             ) : (
                                 <View style={styles.buttonRow}>
-                                    <AppButton title="Opet" variant="wine" onPress={() => onRate(Rating.Again)} />
-                                    <AppButton title="Teško" variant="rust" onPress={() => onRate(Rating.Hard)} />
-                                    <AppButton title="Dobro" variant="slate" onPress={() => onRate(Rating.Good)} />
-                                    <AppButton title="Lako" variant="sage" onPress={() => onRate(Rating.Easy)} />
+                                    <AppButton
+                                        title="Opet" variant="wine" onPress={() => onRate(Rating.Again)}
+                                        subtitle={stats.showDuePreview ? formatRelativeDue(previewNextDue(dueQueue[0], Rating.Again)) : undefined}
+                                    />
+                                    <AppButton
+                                        title="Teško" variant="rust" onPress={() => onRate(Rating.Hard)}
+                                        subtitle={stats.showDuePreview ? formatRelativeDue(previewNextDue(dueQueue[0], Rating.Hard)) : undefined}
+                                    />
+                                    <AppButton
+                                        title="Dobro" variant="slate" onPress={() => onRate(Rating.Good)}
+                                        subtitle={stats.showDuePreview ? formatRelativeDue(previewNextDue(dueQueue[0], Rating.Good)) : undefined}
+                                    />
+                                    <AppButton
+                                        title="Lako" variant="sage" onPress={() => onRate(Rating.Easy)}
+                                        subtitle={stats.showDuePreview ? formatRelativeDue(previewNextDue(dueQueue[0], Rating.Easy)) : undefined}
+                                    />
                                 </View>
                             )}
                         </View>

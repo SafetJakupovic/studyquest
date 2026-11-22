@@ -1,4 +1,5 @@
 import * as SQLite from 'expo-sqlite';
+import { Alert } from 'react-native';
 import { createEmptyCard, type Card } from 'ts-fsrs';
 
 export const COINS_PER_MINUTE = 1;
@@ -16,6 +17,7 @@ export type Stats = {
     maxNewCardsPerDay: number;
     leechThreshold: number;
     coinsPerPage: number;
+    showDuePreview: number;
 };
 
 export type DeckStats = {
@@ -23,6 +25,7 @@ export type DeckStats = {
     name: string;
     total: number;
     due: number;
+    newCards: number;
 }
 
 export type StoredQuestion = {
@@ -290,11 +293,72 @@ export function initDatabase() {
         });
     }
 
+    if (version < 13) {
+        db.withTransactionSync(() => {
+            db.execSync(`
+                CREATE TABLE IF NOT EXISTS new_cards_shown_log (
+                    date TEXT NOT NULL,
+                    questionId INTEGER NOT NULL REFERENCES questions(id),
+                    PRIMARY KEY (date, questionId)
+                );
+            `);
+            db.execSync('PRAGMA user_version = 13');
+        });
+    }
+
+    if (version < 14) {
+        db.withTransactionSync(() => {
+            const columns = db.getAllSync<{ name: string }>('PRAGMA table_info(stats)');
+            if (!columns.some(c => c.name === 'showDuePreview')) {
+                db.execSync('ALTER TABLE stats ADD COLUMN showDuePreview INTEGER NOT NULL DEFAULT 1;');
+            }
+            db.execSync('PRAGMA user_version = 14');
+        });
+    }
+
+    if (version < 15) {
+        db.withTransactionSync(() => {
+            db.execSync(`
+                CREATE TABLE IF NOT EXISTS review_rewards_log (
+                    date TEXT NOT NULL,
+                    questionId INTEGER NOT NULL REFERENCES questions(id),
+                    PRIMARY KEY (date, questionId)
+                );
+            `);
+            db.execSync('PRAGMA user_version = 15');
+        });
+    }
+
     // ocistio bazu s ovim kad sam pogresan format stavio
     // moze se obrisati, ali neka
     /*db.runSync(
         "UPDATE questions SET last_review = NULL WHERE last_review IS NOT NULL AND last_review NOT LIKE '____-__-__T%'"
     );*/
+}
+
+export function applyReviewModeReward(correctIds: number[]): { stats: Stats; rewarded: number } {
+    const today = new Date().toISOString().slice(0, 10);
+    let rewarded = 0;
+
+    for (const id of correctIds) {
+        const r = db.runSync('INSERT OR IGNORE INTO review_rewards_log (date, questionId) VALUES (?, ?)', [today, id]);
+        if (r.changes > 0) rewarded++;
+    }
+
+    if (rewarded > 0) {
+        const { newStreak } = updateStreak(getStats());
+        db.runSync(
+            'UPDATE stats SET xp = xp + ?, coins = coins + ?, streak = ?, lastStudyDate = ? WHERE id = 1',
+            [rewarded, rewarded, newStreak, today]
+        );
+    }
+
+    return { stats: getStats(), rewarded };
+}
+
+export function setShowDuePreview(value: boolean): Stats {
+    db.runSync('UPDATE stats SET showDuePreview = ? WHERE id = 1', [value ? 1 : 0]);
+    return getStats();
 }
 
 export function exchangeCoinsForMinutes(minutes: number): Stats {
@@ -318,19 +382,26 @@ export function exchangeCoinsForBudget(km: number): Stats {
 }
 
 export function getDeckStats(): DeckStats[] {
-    const now = new Date().toISOString();
-    return db.getAllSync<DeckStats>(
-        `SELECT d.id, d.name,
-        COUNT(q.id) AS total,
-        COALESCE(SUM(CASE WHEN date(q.due) <= date(?) THEN 1 ELSE 0 END), 0) AS due
-        FROM decks d
-        LEFT JOIN questions q ON q.deck_id = d.id 
-        GROUP BY d.id
-        ORDER BY d.name`,
-        [now]
-    );
-    // count(*) bi vratilo 1 umjesto 0 ako nema nista
-    // coalesce vraca 0 umjesto null, a suma prakticno broji jedan po jedan da sabere koliko ih je na redu za ponavljanje 
+    const today = new Date().toISOString().slice(0, 10);
+    const stats = getStats();
+    const decks = db.getAllSync<{ id: number; name: string }>('SELECT id, name FROM decks ORDER BY name');
+
+    return decks.map(d => {
+        const row = db.getFirstSync<{ total: number; newCards: number; reviewing: number; newAvail: number }>(
+            `SELECT
+                COUNT(*) AS total,
+                COALESCE(SUM(CASE WHEN state = 0 THEN 1 ELSE 0 END), 0) AS newCards,
+                COALESCE(SUM(CASE WHEN state != 0 AND date(due) <= date(?) AND consecutiveFails < ? THEN 1 ELSE 0 END), 0) AS reviewing,
+                COALESCE(SUM(CASE WHEN state = 0 AND date(due) <= date(?) THEN 1 ELSE 0 END), 0) AS newAvail
+             FROM questions WHERE deck_id = ?`,
+            [today, stats.leechThreshold, today, d.id]
+        );
+
+        const remainingNew = Math.max(0, stats.maxNewCardsPerDay - getNewCardsShownToday(d.id));
+        const due = (row?.reviewing ?? 0) + Math.min(row?.newAvail ?? 0, remainingNew);
+
+        return { id: d.id, name: d.name, total: row?.total ?? 0, newCards: row?.newCards ?? 0, due };
+    });
 }
 
 export function createDeck(name: string): number {
@@ -397,11 +468,12 @@ export function getAllQuestions(): StoredQuestion[] {
 
 export function getDueQuestions(deckId: number, dryRun: boolean = false): QuestionWithImages[] {
     const now = new Date().toISOString();
+    const today = now.slice(0, 10);
     const stats = getStats();
 
     const reviewing = db.getAllSync<StoredQuestion>(
-        'SELECT * FROM questions WHERE due <= ? AND deck_id = ? AND state != 0 AND consecutiveFails < ? ORDER BY due ASC',
-        [now, deckId, stats.leechThreshold]
+        'SELECT * FROM questions WHERE date(due) <= date(?) AND deck_id = ? AND state != 0 AND consecutiveFails < ? ORDER BY due ASC',
+        [today, deckId, stats.leechThreshold]
     );
 
     const alreadyShownToday = getNewCardsShownToday(deckId);
@@ -409,16 +481,17 @@ export function getDueQuestions(deckId: number, dryRun: boolean = false): Questi
 
     const newCards = remainingNewSlots > 0
         ? db.getAllSync<StoredQuestion>(
-            'SELECT * FROM questions WHERE due <= ? AND deck_id = ? AND state = 0 ORDER BY due ASC LIMIT ?',
-            [now, deckId, remainingNewSlots]
+            'SELECT * FROM questions WHERE date(due) <= date(?) AND deck_id = ? AND state = 0 ORDER BY due ASC LIMIT ?',
+            [today, deckId, remainingNewSlots]
         )
         : [];
 
-    if (!dryRun && newCards.length > 0) {
-        registerNewCardsShown(deckId, newCards.length);
-    }
-
     return attachImages([...reviewing, ...newCards]);
+}
+
+export function markNewCardReviewed(deckId: number, questionId: number) {
+    const today = new Date().toISOString().slice(0, 10);
+    db.runSync('INSERT OR IGNORE INTO new_cards_shown_log (date, questionId) VALUES (?, ?)', [today, questionId]);
 }
 
 // azuriranje kartice nakon odgovora
@@ -699,8 +772,8 @@ export function importRawData(data: BackupPayload) {
         }
 
         db.runSync(
-            'UPDATE stats SET xp = ?, coins = ?, gameBudget = ?, streak = ?, lastStudyDate = ?, maxNewCardsPerDay = ?, leechThreshold = ? WHERE id = 1',
-            [data.stats.xp, data.stats.coins, data.stats.gameBudget, data.stats.streak, data.stats.lastStudyDate, data.stats.maxNewCardsPerDay, data.stats.leechThreshold]
+            'UPDATE stats SET xp = ?, coins = ?, gameBudget = ?, streak = ?, lastStudyDate = ?, maxNewCardsPerDay = ?, leechThreshold = ?, showDuePreview = ? WHERE id = 1',
+            [data.stats.xp, data.stats.coins, data.stats.gameBudget, data.stats.streak, data.stats.lastStudyDate, data.stats.maxNewCardsPerDay, data.stats.leechThreshold, data.stats.showDuePreview ?? 1]
         );
     });
 }
@@ -712,37 +785,52 @@ export function setMaxNewCardsPerDay(value: number): Stats {
 
 function getNewCardsShownToday(deckId: number): number {
     const today = new Date().toISOString().slice(0, 10);
-    const row = db.getFirstSync<{ count: number }>(
-        'SELECT count FROM new_cards_log WHERE date = ? AND deckId = ?',
+    const row = db.getFirstSync<{ c: number }>(
+        `SELECT COUNT(*) as c FROM new_cards_shown_log l
+         JOIN questions q ON q.id = l.questionId
+         WHERE l.date = ? AND q.deck_id = ?`,
         [today, deckId]
     );
-    return row?.count ?? 0;
+    return row?.c ?? 0;
 }
 
-function registerNewCardsShown(deckId: number, additionalCount: number) {
-    if (additionalCount <= 0)
-        return;
+function registerNewCardsShown(deckId: number, cardIds: number[]) {
     const today = new Date().toISOString().slice(0, 10);
-    db.runSync(`INSERT INTO new_cards_log (date, deckId, count) VALUES (?, ?, ?)
-        ON CONFLICT(date, deckId) DO UPDATE SET count = count + ?`,
-        [today, deckId, additionalCount, additionalCount]);
+    for (const id of cardIds) {
+        db.runSync('INSERT OR IGNORE INTO new_cards_shown_log (date, questionId) VALUES (?, ?)', [today, id]);
+    }
 }
 
 export function getTodaySummary(): { totalDue: number; deckCount: number } {
+    const today = new Date().toISOString().slice(0, 10);
+    const stats = getStats();
     const decks = db.getAllSync<{ id: number }>('SELECT id FROM decks');
+
     let totalDue = 0;
     let deckCount = 0;
 
     for (const d of decks) {
-        const count = getDueQuestions(d.id, true).length;
-        if (count > 0) {
-            totalDue += count;
+        const reviewing = db.getFirstSync<{ c: number }>(
+            `SELECT COUNT(*) as c FROM questions WHERE deck_id = ? AND state != 0 AND date(due) <= date(?) AND consecutiveFails < ?`,
+            [d.id, today, stats.leechThreshold]
+        )?.c ?? 0;
+
+        const alreadyShown = getNewCardsShownToday(d.id);
+        const remainingSlots = Math.max(0, stats.maxNewCardsPerDay - alreadyShown);
+        const availableNew = db.getFirstSync<{ c: number }>(
+            `SELECT COUNT(*) as c FROM questions WHERE deck_id = ? AND state = 0 AND date(due) <= date(?)`,
+            [d.id, today]
+        )?.c ?? 0;
+        const newCount = Math.min(availableNew, remainingSlots);
+
+        const deckTotal = reviewing + newCount;
+        if (deckTotal > 0) {
+            totalDue += deckTotal;
             deckCount += 1;
         }
     }
 
     return { totalDue, deckCount };
-
 }
 
 export function updateLeechTracking(id: number, wasAgain: boolean) {
@@ -795,4 +883,15 @@ export function createActivity(name: string, xpReward: number, coinsReward: numb
 export function deleteActivity(id: number) {
     db.runSync('DELETE FROM activity_log WHERE activityId = ?', [id]);
     db.runSync('DELETE FROM activities WHERE id = ?', [id]);
+}
+
+export function deleteDeck(deckId: number) {
+    db.withTransactionSync(() => {
+        db.runSync('DELETE FROM question_images WHERE questionId IN (SELECT id FROM questions WHERE deck_id = ?)', [deckId]);
+        db.runSync('DELETE FROM new_cards_shown_log WHERE questionId IN (SELECT id FROM questions WHERE deck_id = ?)', [deckId]);
+        db.runSync('DELETE FROM new_cards_log WHERE deckId = ?', [deckId]);
+        db.runSync('DELETE FROM questions WHERE deck_id = ?', [deckId]);
+        db.runSync('DELETE FROM decks WHERE id = ?', [deckId]);
+        db.runSync('DELETE FROM review_rewards_log WHERE questionId IN (SELECT id FROM questions WHERE deck_id = ?)', [deckId]);
+    });
 }

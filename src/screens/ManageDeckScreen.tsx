@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { getLeechQuestions, getQuestionsByDeck, QuestionWithImages, Stats, StoredQuestion } from "../db/database";
 import { EditQuestionScreen } from "./EditQuestionScreen";
-import { BackHandler, Button, Image, Pressable, ScrollView, Text, View } from "react-native";
+import { Alert, BackHandler, Button, Image, Pressable, ScrollView, Text, View } from "react-native";
 import { styles } from "../styles/styles";
 import { ScreenBackground } from "../components/ScreenBackground";
 import { AppButton } from "../components/AppButton";
+import { colors, fonts } from "../styles/theme";
+import { formatRelativeDue } from "../utils/fsrsPreview";
 
 type Props = {
     deckId: number;
@@ -85,6 +87,9 @@ export function ManageDeckScreen({ deckId, deckName, stats, onExit }: Props) {
                                 resizeMode="cover" />
                         )}
                         <Text style={[styles.question, { flex: 1 }]}>{previewText(q.question)}</Text>
+                        <Text style={{ fontFamily: fonts.body, fontSize: 11, color: colors.inkMuted }}>
+                            {q.state === 0 ? 'Nova kartica' : formatRelativeDue(new Date(q.due))}
+                        </Text>
                     </Pressable>
                 ))}
 
